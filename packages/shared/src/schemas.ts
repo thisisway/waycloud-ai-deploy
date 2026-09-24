@@ -95,7 +95,7 @@ export const saidas = {
     .strict(),
   publicar: z.object({ deploy_id: z.string().uuid() }).strict(),
   status_deploy: z
-    .object({ status: z.enum(["na_fila", "enviando", "validando", "publicado", "falhou", "revertido"]), url: z.string().nullable() })
+    .object({ status: z.enum(["na_fila", "enviando", "validando", "publicado", "falhou", "revertido"]), url: z.string().nullable(), https_ativo: z.boolean().nullable(), intervalo_sugerido_segundos: z.number().int() })
     .strict(),
   verificar_site: z
     .object({ http_status: z.number().int(), ssl_ok: z.boolean(), tempo_resposta_ms: z.number().int(), links_quebrados: z.number().int() })

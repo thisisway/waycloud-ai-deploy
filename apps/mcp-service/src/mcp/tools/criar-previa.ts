@@ -1,9 +1,8 @@
 import { erro, ok } from "@waycloud/shared";
 import { analyzeProject } from "../../detect/detect.js";
 import { newSlug, previewUrl, removePreview, writePreview } from "../../previews.js";
-import { ArchiveError, readZip } from "../../scan/archive.js";
 import { findSession } from "../../sessions.js";
-import { packageKey, rawKey, storePackage, type UploadRow } from "../../uploads.js";
+import { prepareUpload, selectUpload } from "../../uploads.js";
 import { defineTool } from "./define.js";
 
 const text = (b: Uint8Array | undefined) => (b ? Buffer.from(b).toString("utf8").slice(0, 200_000) : undefined);
@@ -15,34 +14,11 @@ export default defineTool(
     const session = await findSession(ctx.db, a.sessao_id);
     if (!session) return erro("SESSAO_INVALIDA");
 
-    const [upload] = a.upload_id
-      ? await ctx.db.query<UploadRow>("SELECT id, session_id, scan_status FROM uploads WHERE id = $1 AND session_id = $2", [a.upload_id, session.id])
-      : await ctx.db.query<UploadRow>("SELECT id, session_id, scan_status FROM uploads WHERE session_id = $1 AND scan_status IN ('awaiting_upload', 'clean') ORDER BY created_at DESC LIMIT 1", [session.id]);
+    const upload = await selectUpload(ctx, session.id, a.upload_id);
     if (!upload) return erro("UPLOAD_NAO_ENCONTRADO");
-    if (upload.scan_status === "blocked") return erro("ARQUIVOS_REPROVADOS");
-
-    let files: Map<string, Uint8Array>;
-    if (upload.scan_status === "awaiting_upload") {
-      const raw = await ctx.storage.get(rawKey(session.id, upload.id));
-      if (!raw) return erro("UPLOAD_NAO_ENCONTRADO");
-      let entries: Map<string, Uint8Array>;
-      try {
-        entries = readZip(raw);
-      } catch (e) {
-        if (!(e instanceof ArchiveError)) throw e;
-        await ctx.db.query("UPDATE uploads SET scan_status = 'invalid' WHERE id = $1", [upload.id]);
-        await ctx.storage.remove(rawKey(session.id, upload.id));
-        return erro("ARQUIVO_INVALIDO");
-      }
-      const stored = await storePackage(ctx, session.id, upload.id, entries);
-      await ctx.storage.remove(rawKey(session.id, upload.id));
-      if (!stored.ok) return erro("ARQUIVOS_REPROVADOS");
-      files = stored.files;
-    } else if (upload.scan_status === "clean") {
-      const pkg = await ctx.storage.get(packageKey(session.id, upload.id));
-      if (!pkg) return erro("UPLOAD_NAO_ENCONTRADO");
-      files = readZip(pkg);
-    } else return erro("UPLOAD_NAO_ENCONTRADO");
+    const prepared = await prepareUpload(ctx, session.id, upload);
+    if (!prepared.ok) return erro(prepared.codigo);
+    const files = prepared.files;
 
     const { analise, folder } = analyzeProject(
       { arquivos: [...files].map(([caminho, b]) => ({ caminho, tamanho: b.length })), package_json: text(files.get("package.json")), composer_json: text(files.get("composer.json")) },

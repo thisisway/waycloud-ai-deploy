@@ -1,6 +1,7 @@
 import { migrate, openPostgres } from "./db/index.js";
 import { startMaintenance } from "./jobs/maintenance.js";
 import { httpAddonClient } from "./addon.js";
+import { syncAgentTokens } from "./agent.js";
 import { planCatalog } from "./plans.js";
 import { buildApp } from "./server.js";
 import { loadConfig } from "./settings.js";
@@ -12,6 +13,9 @@ const log = (o: object) => console.log(JSON.stringify(o));
 const db = openPostgres(config.databaseUrl);
 const applied = await migrate(db);
 if (applied.length) log({ msg: "migrations applied", applied });
+
+const agents = await syncAgentTokens(db, config.agentTokens);
+if (agents.length) log({ msg: "agent tokens synced", servers: agents });
 
 const addon = config.addon && httpAddonClient(config.addon);
 const ctx = { db, plans: planCatalog({ addon }), storage: s3Storage(config.s3), settings: config.settings, addon };

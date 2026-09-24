@@ -14,6 +14,8 @@ export interface ToolContext {
   settings: Settings;
   /** Signed client of the WHMCS addon; absent when the addon is not configured. */
   addon?: AddonClient;
+  /** fetch used by verificar_site (injectable in tests). */
+  fetchFn?: typeof fetch;
 }
 
 export interface ToolDef {

@@ -1,3 +1,4 @@
+import { failStaleDeploys } from "../deploys.js";
 import { removePreview } from "../previews.js";
 import type { ToolContext } from "../mcp/tools/define.js";
 import { packageKey, rawKey } from "../uploads.js";
@@ -39,12 +40,12 @@ export async function purgeOldSessions(ctx: ToolContext, days = 30): Promise<num
 }
 
 export async function runMaintenance(ctx: ToolContext) {
-  return { previews: await expirePreviews(ctx), uploads: await cleanupStaleUploads(ctx), sessions: await purgeOldSessions(ctx) };
+  return { previews: await expirePreviews(ctx), uploads: await cleanupStaleUploads(ctx), sessions: await purgeOldSessions(ctx), deploys: await failStaleDeploys(ctx.db) };
 }
 
 // ponytail: single-instance timer. With more than one replica, add a lock (pg_try_advisory_lock) or move to BullMQ.
 export function startMaintenance(ctx: ToolContext, everyMs = 10 * 60_000, log: (o: object) => void = () => {}): () => void {
-  const tick = () => runMaintenance(ctx).then((r) => (r.previews || r.uploads || r.sessions) && log({ msg: "maintenance", ...r })).catch((e: unknown) => log({ msg: "maintenance failed", error: String(e) }));
+  const tick = () => runMaintenance(ctx).then((r) => (r.previews || r.uploads || r.sessions || r.deploys) && log({ msg: "maintenance", ...r })).catch((e: unknown) => log({ msg: "maintenance failed", error: String(e) }));
   const timer = setInterval(tick, everyMs);
   timer.unref();
   void tick();

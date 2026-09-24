@@ -11,6 +11,8 @@ RUN pnpm install --frozen-lockfile --prod
 
 COPY packages/shared packages/shared
 COPY apps/mcp-service apps/mcp-service
+# The deploy agent and its installer are served to enrolled Plesk servers (the repository is private).
+COPY agent agent
 
 # Previews live on a volume shared with the Nginx edge; created here so the volume inherits node ownership.
 RUN mkdir -p /srv/previews && chown node:node /srv/previews

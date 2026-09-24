@@ -1,6 +1,7 @@
 import Fastify from "fastify";
 import { StreamableHTTPServerTransport } from "@modelcontextprotocol/sdk/server/streamableHttp.js";
 import { createMcpServer } from "./mcp/server.js";
+import { registerAgentRoutes } from "./agent.js";
 import { handleWhmcsWebhook } from "./webhooks.js";
 import type { ToolContext } from "./mcp/tools/define.js";
 
@@ -27,6 +28,8 @@ export function buildApp(ctx: ToolContext, opts: { webhookSecret?: string } = {}
       });
     });
   }
+
+  registerAgentRoutes(app, ctx);
 
   // Stateless Streamable HTTP: a fresh MCP server + transport per request. Our own session id
   // travels as the `sessao_id` tool argument, so no server-side MCP session is kept.

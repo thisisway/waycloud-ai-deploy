@@ -7,10 +7,12 @@ import type { ToolDef } from "./define.js";
 import iniciarSessao from "./iniciar-sessao.js";
 import listarPlanos from "./listar-planos.js";
 import obterUrlUpload from "./obter-url-upload.js";
-import pending from "./pending.js";
+import publicar from "./publicar.js";
+import statusDeploy from "./status-deploy.js";
 import statusPedido from "./status-pedido.js";
+import verificarSite from "./verificar-site.js";
 
-export const TOOLS: ToolDef[] = [iniciarSessao, analisarProjeto, listarPlanos, obterUrlUpload, enviarArquivos, criarPrevia, criarCheckout, statusPedido, ...pending];
+export const TOOLS: ToolDef[] = [iniciarSessao, analisarProjeto, listarPlanos, obterUrlUpload, enviarArquivos, criarPrevia, criarCheckout, statusPedido, publicar, statusDeploy, verificarSite];
 
 // Fails at import time if a tool from the shared schemas has no implementation (or vice versa).
 const missing = TOOL_NAMES.filter((n) => !TOOLS.some((t) => t.name === n));

@@ -106,6 +106,54 @@ export const MENSAGENS = {
     mensagem: "O pagamento foi recebido, mas houve um problema ao criar a hospedagem. Nossa equipe já foi avisada.",
     proximo: "Explique ao cliente que o suporte da Way Cloud vai entrar em contato. Não tente publicar.",
   },
+  PEDIDO_NAO_ATIVO: {
+    mensagem: "Ainda não posso publicar: a hospedagem deste pedido não está ativa.",
+    proximo: "Use status_pedido e aguarde ficar ativo (depois do pagamento). Não tente publicar antes.",
+  },
+  DEPLOY_INICIADO: {
+    mensagem: "Certo! Estou publicando o seu site.",
+    proximo: "Consulte status_deploy a cada 5 segundos até o site ser publicado.",
+  },
+  DEPLOY_EM_ANDAMENTO: {
+    mensagem: "Já existe uma publicação em andamento para este site.",
+    proximo: "Aguarde ela terminar consultando status_deploy.",
+  },
+  DEPLOY_NAO_ENCONTRADO: {
+    mensagem: "Não encontrei essa publicação.",
+    proximo: "Chame publicar para iniciar uma nova publicação.",
+  },
+  DEPLOY_NA_FILA: {
+    mensagem: "A publicação está na fila.",
+    proximo: "Consulte status_deploy de novo em cerca de 5 segundos.",
+  },
+  DEPLOY_ENVIANDO: {
+    mensagem: "Estou enviando os arquivos para a hospedagem.",
+    proximo: "Consulte status_deploy de novo em cerca de 5 segundos.",
+  },
+  DEPLOY_VALIDANDO: {
+    mensagem: "Estou conferindo o site antes de colocar no ar.",
+    proximo: "Consulte status_deploy de novo em cerca de 5 segundos.",
+  },
+  DEPLOY_PUBLICADO: {
+    mensagem: "Seu site está no ar!",
+    proximo: "Mostre o endereço ao cliente e use verificar_site para conferir HTTPS, velocidade e links.",
+  },
+  DEPLOY_FALHOU: {
+    mensagem: "Não consegui publicar o site. A versão anterior continua no ar, sem alteração.",
+    proximo: "Confira os arquivos do projeto e tente publicar de novo. Se persistir, indique o suporte da Way Cloud.",
+  },
+  DEPLOY_REVERTIDO: {
+    mensagem: "Encontrei um problema na nova versão e voltei automaticamente para a anterior.",
+    proximo: "Confira os arquivos do projeto e tente publicar de novo. Se persistir, indique o suporte da Way Cloud.",
+  },
+  SITE_VERIFICADO: {
+    mensagem: "Conferi o seu site e está tudo certo.",
+    proximo: "Mostre o resultado ao cliente e explique os próximos passos: apontar o domínio e criar e-mails.",
+  },
+  SITE_COM_PROBLEMAS: {
+    mensagem: "Conferi o seu site e encontrei pontos a corrigir.",
+    proximo: "Explique ao cliente o que foi encontrado (HTTPS, tempo de resposta ou links quebrados). Se o HTTPS ainda não está ativo, pode levar alguns minutos.",
+  },
   NAO_IMPLEMENTADO: {
     mensagem: "Esta etapa ainda não está disponível.",
     proximo: "Avise o cliente que essa etapa será liberada em breve.",

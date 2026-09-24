@@ -1,0 +1,7 @@
+#!/bin/bash
+# Fake Plesk CLI: records every call; `-php_handler_id` fails when /tmp/plesk-fail-php exists.
+echo "$*" >> /tmp/plesk.log
+case "$*" in
+  *php_handler_id*) [ -f /tmp/plesk-fail-php ] && exit 1 ;;
+esac
+exit 0

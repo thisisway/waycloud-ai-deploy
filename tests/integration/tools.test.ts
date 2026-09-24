@@ -65,11 +65,6 @@ describe("flow: iniciar_sessao -> analisar_projeto -> listar_planos", () => {
     expect(r).toMatchObject({ ok: false, codigo: "SESSAO_INVALIDA" });
     expect(r.dados).toBeUndefined();
   });
-
-  it("tools that arrive in later milestones answer with a fixed 'not available' message", async () => {
-    const r = await call("publicar", { sessao_id: "x".repeat(43) });
-    expect(r).toMatchObject({ ok: false, codigo: "NAO_IMPLEMENTADO" });
-  });
 });
 
 describe("acceptance criterion 4: no personal data, credentials or project text in tool output", () => {
