@@ -236,3 +236,10 @@ Ferramentas de admin do MVP no addon: mapa tipo→produto, limites, chaves HMAC,
 **Ainda por fazer**
 - Compra real de teste (link -> cadastro -> fatura -> pagamento -> `ativo`).
 - Prévias em produção: o Nginx da prévia depende de volume compartilhado, e o Easypanel não garante a permissão de escrita para o usuário do serviço. Proposta: o próprio serviço servir a prévia pelo `Host` (`<slug>.wayleads.com.br`), recriando a pasta a partir do pacote no R2 quando ela sumir num redeploy. Depende do DNS `*.wayleads.com.br`.
+
+
+**Compra de teste em produção (2026-09-24), ciclo completo validado**
+Link do checkout -> cadastro rápido -> `AddClient` (com "Celular") -> `AddOrder` -> login automático (SSO) na fatura #8073 com Pix da Efí (aceitou o endereço padrão "Não informado", CEP 00000-000) -> pagamento simulado com `AddInvoicePayment` (`TESTE-IA-8073`) -> hook `InvoicePaid` -> criação automática da hospedagem no Plesk em 15 s (serviço #1011, servidor 18, `ucyp2gio2l.sites.wayleads.com.br`) -> hooks `AfterModuleCreate` -> 3 eventos (`order.created`, `order.paid`, `service.active`) entregues ao MCP na primeira tentativa -> `status_pedido = ativo`.
+Confirmado na prática: nomes de parâmetros de `AddClient`/`AddOrder`/`CreateSsoToken`, variáveis dos hooks (`params.serviceid`, `params.serverid`), CSRF e Smarty na página de addon, atribuição automática do servidor 18 pelo grupo de servidores.
+Ainda não exercitado: pagamento real de Pix (confirmação da Efí), cartão pela Iugu, falha de provisionamento (`AfterModuleCreateFailed`).
+O serviço #1011 foi mantido ativo para testar o deploy do M5; cancelar ao final.
