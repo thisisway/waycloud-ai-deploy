@@ -1,0 +1,27 @@
+{
+  "name": "waycloud-ai-deploy",
+  "private": true,
+  "type": "module",
+  "engines": {
+    "node": ">=20"
+  },
+  "scripts": {
+    "test": "vitest run",
+    "typecheck": "tsc --noEmit -p tsconfig.json",
+    "dev": "tsx apps/mcp-service/src/main.ts",
+    "build:addon": "node scripts/build-addon-zip.mjs",
+    "checkout:dev": "tsx scripts/create-checkout-link.ts",
+    "test:php": "docker run --rm -v \"%cd%:/app\" -w /app php:8.1-cli sh tests/php/check.sh"
+  },
+  "devDependencies": {
+    "@electric-sql/pglite": "^0.5.8",
+    "@modelcontextprotocol/sdk": "^1.30.0",
+    "@types/node": "^26.6.2",
+    "fflate": "^0.8.3",
+    "tsx": "^4.23.15",
+    "typescript": "^7.0.2",
+    "vitest": "^5.0.1",
+    "zod": "^3.25.76"
+  },
+  "packageManager": "pnpm@11.8.0"
+}

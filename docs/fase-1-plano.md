@@ -1,0 +1,218 @@
+# Way Cloud AI Deploy — Fase 1 (MVP): plano
+
+Status: **aguardando aprovação. Nenhum código foi escrito.**
+Escopo do prompt: sites estáticos, SPAs com build e PHP simples; as 11 ferramentas da Fase 1; prévia; checkout com Pix e cartão; provisionamento automático; deploy com SSL; CLI básica; `llms.txt`.
+🔶 = a validar em teste antes de virar código.
+
+---
+
+## 1. Revisões à Fase 0 (o que mudou ao detalhar)
+
+| Tema | Fase 0 | Fase 1 | Por quê |
+|---|---|---|---|
+| **Domínio de prévias** | `*.preview.wayleads.com.br` | **`<slug>.wayleads.com.br`** (um nível) | O wildcard universal e gratuito da Cloudflare cobre `*.wayleads.com.br`, e não `*.preview.…`. Some a emissão por DNS-01. O domínio agora é exclusivo de prévias, então o risco de cookies (R15) cai. 🔶 wildcard com proxy no plano da sua conta |
+| **Domínio provisório dos sites pagos** | não tratado | **`<slug>.sites.wayleads.com.br`** (DNS-only → 177.11.55.71) | O produto Plesk exige um domínio ao criar a assinatura, e o cliente ainda não tem um. Depois ele troca pelo domínio próprio (Fase 2) |
+| **Chave de API do Plesk** | mcp-service guardava | **Não existe no mcp-service.** Só o agente, local no servidor, roda `plesk bin` | Menos segredos e menos superfície. A assinatura é criada pelo módulo Plesk do WHMCS |
+| **Chave de API do WHMCS** | mcp-service usava a API externa | **Não existe no mcp-service.** Só HMAC com o addon; o addon usa `localAPI` | Um vazamento do serviço MCP não dá acesso ao WHMCS |
+| **Armazenamento** | MinIO | **Cloudflare R2** (bucket novo) em produção; MinIO só no `docker-compose` de dev | Você já usa R2 |
+| **Deploy** | agente (Go ou script) | **Agente em Bash** (poll de 5 s, systemd) no MVP | ~150 linhas, sem compilar, fácil de auditar por você antes de instalar como root |
+
+---
+
+## 2. Decisões técnicas
+
+- **Monorepo pnpm**, TypeScript estrito, Node 20. **Fastify** para a API HTTP; **`@modelcontextprotocol/sdk`** com transporte **Streamable HTTP em modo stateless**. O ID da sessão da Way Cloud vai como parâmetro `sessao_id` em cada ferramenta, o que também serve à CLI.
+- **PostgreSQL** com migrações SQL numeradas e o driver `postgres`, sem ORM. **BullMQ + Redis** para jobs (varredura, prévia, deploy, verificação, expiração). **Zod** para entradas e saídas.
+- **Upload**: `obter_url_upload` devolve uma URL pré-assinada de PUT no R2 (validade 15 min, tamanho máximo). Não há chamada "concluído": `criar_previa` confere se o objeto existe e roda a varredura.
+- **Normalização no servidor**: todo zip é validado e **reempacotado em `.tar.gz` limpo** (sem symlinks, sem caminhos absolutos ou com `..`, sem arquivos especiais, sem `.env`). O agente só recebe esse pacote.
+- **Varredura (MVP, em TypeScript)**: limites de tamanho, quantidade e razão de descompressão; extensões proibidas (`.exe`, `.dll`, `.so`, `.bat`…); assinaturas de webshell (`eval(base64_decode`, `c99`, `r57` etc.); heurística de phishing (formulário de senha + marca conhecida + domínio divergente). ClamAV como contêiner **opcional** no compose.
+- **Detecção de projeto** (função pura sobre o manifesto): `package.json` (Vite/React/Vue/Angular → pasta de saída `dist`/`build`/`out`), `composer.json`/`.php` (versão de PHP), `wp-config.php`/`wp-content` (WordPress → recusa no MVP com mensagem clara), `next start`/Express (Node server → Fase 3), `.sql`, `.env`. Saída: tipo, requisitos, plano recomendado, avisos.
+- **Prévia**: worker extrai em volume compartilhado; **Nginx** estático serve `/srv/previews/<slug>`, com `X-Robots-Tag: noindex`, banner injetado por `sub_filter` e fallback de SPA. Job repetido apaga a pasta ao expirar. **Slug aleatório**, sem dados do cliente. Só estático (PHP não executa).
+- **Checkout**: página do addon (`_clientarea`, sem login obrigatório 🔶) com token de uso único e validade curta; só o hash fica no banco. Fluxo: valida CPF/CNPJ (PHP + JS em tempo real) → `AddClient` (ou pede login se o e-mail já existe) → `AddOrder` (Pix Efí por padrão; o cliente troca por cartão Iugu na fatura) → `CreateSsoToken` para a fatura. A IA nunca vê esses dados.
+- **Provisionamento**: o Speed BR já provisiona no primeiro pagamento. O addon só acompanha: `InvoicePaid` → estado `pago`; `AfterModuleCreate` → `ativo` + webhook; `AfterModuleCreateFailed` → alerta ao admin + `falhou`. Webhooks HMAC-SHA256 com timestamp e nonce (janela de 5 min), nos dois sentidos.
+- **Deploy no Plesk (agente local)**: baixa o `.tar.gz` por URL pré-assinada, confere SHA-256 → extrai em `<vhost>/.waycloud/releases/<id>/` → valida (`index.html|php`, tamanho x cota, dono) → `chown` ao usuário da assinatura → **troca de `httpdocs` por dois `mv` na mesma partição** (janela de milissegundos; guarda o anterior como snapshot) → `plesk bin site --update -php_handler_id plesk-php83-fpm` (IDs confirmados no seu servidor) → Let's Encrypt. Se a verificação falhar, o próprio agente desfaz a troca (rollback automático). SPA recebe `.htaccess` com fallback. 🔶 dono/SELinux dos arquivos movidos, comando exato do Let's Encrypt, se o servidor web é Apache ou LiteSpeed.
+- **Erros e mensagens**: todas as respostas têm `mensagem_para_usuario` e `proximo_passo` **a partir de templates fixos**; nunca ecoam texto do projeto (prompt injection). Um teste de contrato varre todas as saídas procurando e-mail, CPF, senha, chave.
+- **Logs**: JSON com `correlation_id` (sessão → pedido → fatura → serviço → deploy).
+
+---
+
+## 3. Estrutura de arquivos da Fase 1
+
+```
+apps/mcp-service/src/
+  server.ts                    # Fastify + MCP (Streamable HTTP)
+  config.ts                    # env validada com Zod
+  mcp/tools/                   # 1 arquivo por ferramenta (11)
+    iniciar-sessao.ts  analisar-projeto.ts  listar-planos.ts
+    obter-url-upload.ts  enviar-arquivos.ts  criar-previa.ts
+    criar-checkout.ts  status-pedido.ts  publicar.ts
+    status-deploy.ts  verificar-site.ts
+  api/{upload.ts, webhooks-whmcs.ts, agent.ts, health.ts}
+  detect/{detect.ts, rules.ts}          # tipo de projeto (função pura)
+  scan/{archive.ts, rules.ts, scan.ts}  # zip-safety + varredura + repack
+  jobs/{queue.ts, scan.job.ts, preview.job.ts, deploy.job.ts,
+        verify.job.ts, expire.job.ts, reconcile.job.ts}
+  security/{hmac.ts, tokens.ts, ratelimit.ts, sanitize.ts}
+  addon-client.ts                        # chamadas assinadas ao addon
+  db/{index.ts, migrations/0001_init.sql, ...}
+packages/shared/src/{schemas.ts, errors.ts, messages.pt-br.ts, types.ts}
+packages/cli/src/{index.ts, deploy.ts, status.ts, logs.ts, rollback.ts,
+                  pack.ts, ignore.ts}
+agent/{waycloud-agent.sh, waycloud-agent.service, install.sh, README.md}
+preview-edge/{nginx.conf, Dockerfile}
+whmcs/modules/addons/waycloud_ai/
+  waycloud_ai.php              # _config/_activate/_deactivate/_upgrade/_output/_clientarea
+  hooks.php  api.php  checkout.php
+  lib/{Db.php, Hmac.php, Cpf.php, Checkout.php, McpClient.php}
+  templates/{checkout.tpl, admin.tpl}
+docs/{llms.txt, fluxo-para-ias.md, fase-0-planejamento.md, fase-1-plano.md}
+tests/{unit,integration,e2e,fixtures/}   # ver §5
+docker-compose.yml  .env.example  README.md
+```
+
+Ferramentas de admin do MVP no addon: mapa tipo→produto, limites, chaves HMAC, lista de sessões/deploys, logs, funil básico. Métricas completas ficam para a Fase 2.
+
+---
+
+## 4. Ordem de entrega (marcos, com revisão sua ao fim de cada um)
+
+| Marco | Entrega | Precisa de você |
+|---|---|---|
+| **M1** | shared + banco + detecção + varredura + esqueleto das ferramentas, com testes | nada |
+| **M2** | Upload (R2) + prévia (Nginx) + expiração; `docker-compose` de dev | bucket R2 novo, DNS `*.wayleads.com.br` |
+| **M3** | Addon WHMCS: config, tabelas, checkout, HMAC, hooks | subir o addon no WHMCS; produto oculto de teste |
+| **M4** | Ponte pedido/pagamento/provisionamento + `status_pedido` | teste real de Pix (Efí) no produto oculto |
+| **M5** | Agente + `publicar`, `status_deploy`, `verificar_site`, rollback | instalar o agente no Plesk (root) |
+| **M6** | CLI `npx waycloud` + `llms.txt` + README + `.env.example` | — |
+| **M7** | E2E completo, endurecimento, checagem dos critérios de aceite | rodada final em produção |
+
+---
+
+## 5. Testes (mapa dos critérios de aceite do MVP)
+
+| Critério | Teste |
+|---|---|
+| 1. Estático → prévia → pagamento → HTTPS | `e2e`: compose com WHMCS e agente simulados; site de exemplo até a URL final |
+| 2. Pago ⇒ provisionado e publicado | `integration`: webhook `service.active` → job de deploy; agente contra um `plesk` falso e um `httpdocs` em diretório temporário |
+| 3. Sem pagamento ⇒ sem hospedagem; prévia expira | `integration`: checkout expirado não gera pedido; job de expiração apaga a pasta |
+| 4. Sem credencial/dado pessoal nas saídas | `unit`: schemas `.strict()` + varredura de padrões em todas as respostas das 11 ferramentas |
+| 5. Deploy com falha ⇒ nada parcial | `integration`: falha injetada em cada etapa do agente; `httpdocs` continua igual ao snapshot |
+| 6. Detecção, checkout, hook de pagamento, provisionamento, deploy | Vitest (TS), PHPUnit (CPF/CNPJ, HMAC, mapeamento), teste do agente Bash com `plesk` falso |
+
+---
+
+## 6. O que preciso de você para a Fase 1
+
+**Decisões (respondo com padrão se você disser "use o seu")**
+1. **Domínios**: confirma `<slug>.wayleads.com.br` (prévias) e `<slug>.sites.wayleads.com.br` (site pago provisório)? Os registros antigos do wayleads.com.br (A, MX, www, SPF) precisam ser removidos por você quando formos ao ar.
+2. **CPF/CNPJ no WHMCS**: onde ele fica hoje (campo personalizado de cliente? qual o nome/ID?) e quais campos de endereço são obrigatórios? A Efí e a Iugu exigem endereço/CEP para Pix/cartão? O cadastro rápido só tem nome, e-mail, CPF/CNPJ, telefone e senha; endereço teria que ser opcional ou preenchido com valor padrão.
+3. **Termos**: URLs de Termos de Uso e Política de Privacidade da Way Cloud (para o consentimento LGPD no checkout).
+4. **Alertas ao admin**: e-mail para falha de provisionamento/deploy (qual endereço)?
+5. **Mapa de planos**: estático/SPA → Speed BR (pid 173); PHP simples → Boost BR (174). WordPress e Node ficam fora do MVP. Confirma?
+
+**Ações suas, no tempo de cada marco**
+- M2: criar um bucket R2 novo (`waycloud-ai`) e uma chave só dele; criar o registro DNS `*.wayleads.com.br` (proxied) e um token da Cloudflare de DNS somente dessa zona, se optarmos por automatizar.
+- M3: **duplicar** o Speed BR como produto **oculto** ("AI Deploy - Speed") e criar um produto de teste barato; **subir o addon** por zip no cPanel do WHMCS (eu entrego o zip, sem precisar de acesso ao servidor).
+- M5: rodar o instalador do agente como root no Plesk (você lê o script antes).
+
+**Como vamos trabalhar**: eu entrego um marco por vez, com testes passando, e você aprova antes do próximo.
+
+
+---
+
+## 7. Respostas recebidas (2026-09-23)
+
+- **CPF/CNPJ no WHMCS**: dois campos personalizados de cliente: **"Tipo de documento"** (lista `CPF,CNPJ`, exibido no pedido) e **"CPF/CNPJ"** (texto, obrigatório, exibido na fatura). O addon localiza os IDs **pelo nome** em tempo de execução (`tblcustomfields`), sem IDs fixos no código. 🔶 campos de endereço obrigatórios do WHMCS ainda a confirmar no M3.
+- **Termos**: https://waycloud.com.br/termos-de-servicos/ e https://waycloud.com.br/politica-de-privacidade/
+- **Alertas ao admin**: contato@waycloud.com.br
+- **Mapa de planos e domínios**: padrão do plano (estático/SPA → pid 173; PHP simples → pid 174; `<slug>.wayleads.com.br` e `<slug>.sites.wayleads.com.br`).
+- **Ajuste técnico**: o pacote normalizado que o agente recebe é um **.zip** re-gerado pelo servidor (caminhos validados, sem symlinks), extraído com `unzip`, em vez de .tar.gz. Mesmo efeito de segurança, menos uma dependência.
+
+
+---
+
+## 8. M1 concluído (2026-09-23)
+
+**Entregue** (62 testes automatizados; `pnpm test`, `pnpm typecheck`):
+- `packages/shared`: esquemas Zod (entrada e saída) das 11 ferramentas, envelope `{ok, codigo, mensagem_para_usuario, proximo_passo, dados}` e todas as mensagens em português como texto fixo.
+- `apps/mcp-service`: detecção de tipo de projeto, leitura segura de zip (zip-slip, bomba, tamanho declarado falso), varredura (executáveis, webshell, PHP disfarçado, phishing, `.env` removido), pacote `.zip` determinístico, tokens (256 bits, só o hash no banco), HMAC com janela de 5 min e nonce, sessões de 72 h, migração SQL, servidor MCP Streamable HTTP stateless com as 11 ferramentas registradas. Reais: `iniciar_sessao`, `analisar_projeto`, `listar_planos`. As outras 8 respondem "não disponível" até o marco delas.
+- Verificado em Postgres 17 real (contêiner descartável): serviço sobe, migra, atende por MCP e grava.
+
+**Achados durante o M1**
+1. O driver de produção (`postgres.js`) recusa `BEGIN/COMMIT` em pool; o PGlite dos testes não acusava. Corrigido com `Db.tx` (transação de verdade) e um teste que roda só com `TEST_DATABASE_URL` (instruções no arquivo).
+2. O Windows Defender removeu um arquivo de teste que continha amostras literais de webshell (`Backdoor:JS/Chopper.GG`). As amostras agora são montadas em tempo de execução. O histórico do Defender guarda essa detecção; é falso positivo do meu teste, não uma ameaça.
+3. **Premium BR (pid 215) está com preço anual igual ao do Pro BR (R$ 1.078,92) no WHMCS**, provável erro de cadastro. Corrigir antes de ir ao ar.
+
+**Limites conhecidos (marcados no código com `ponytail:`)**: varredura por assinaturas (não é antivírus); phishing só bloqueia quando o formulário posta para outro site; preços dos planos vêm de uma semente (o addon passa a fornecer no M3).
+
+**Próximo: M2** — upload (R2), prévia (Nginx estático), expiração e `docker-compose` de dev. Precisa de você: bucket R2 novo com chave própria e o DNS `*.wayleads.com.br`.
+
+
+---
+
+## 9. M2 concluído (2026-09-24)
+
+**Entregue** (83 testes automatizados, 3 deles contra o R2 real; `pnpm test`):
+- `obter_url_upload`: URL pré-assinada de PUT (15 min) **assinada com o tamanho exato**; o storage recusa qualquer outro tamanho (verificado no R2 e no MinIO: 403 com tamanho errado, 200 com o certo). Limite de 20 uploads por sessão/dia.
+- `enviar_arquivos`: upload inline (até 5 MB, 200 arquivos), com varredura e pacote normalizado.
+- `criar_previa`: lê o .zip, varre, guarda o pacote limpo, publica só a pasta de saída (`dist/`, `build/`...) e devolve a URL e a expiração (24 h). PHP não tem prévia; SPA sem build, WordPress e projetos reprovados recebem mensagens fixas. Máximo de 3 prévias ativas por sessão; uma sessão nunca publica o upload de outra.
+- Nginx da prévia (`preview-edge/`): `X-Robots-Tag: noindex`, banner "Prévia Way Cloud", fallback de SPA por marcador, dotfiles nunca servidos, só aceita host `<slug de 10 caracteres>.<domínio>`.
+- Manutenção a cada 10 min: remove prévias expiradas (pasta e registro), apaga uploads de sessões que nunca compraram (7 dias) e apaga sessões sem pedido 30 dias após expirar (LGPD).
+- `docker-compose.yml` (Postgres, MinIO, Nginx, serviço), `Dockerfile` do serviço e `.env.example`. Testado ponta a ponta na pilha real: IA cliente por MCP → upload inline e por URL pré-assinada → prévia aberta pelo Nginx.
+
+**Achados durante o M2**
+1. Faltava `.dockerignore`: a imagem copiava o `node_modules` do Windows. Corrigido.
+2. A URL pré-assinada assina o host; com MinIO dentro do Docker o cliente precisa de outro endereço. Novo `S3_PUBLIC_ENDPOINT` opcional (no R2 é igual ao endpoint).
+3. No R2, o arquivo de segredos tinha o ID de conta errado e valores trocados. Corrigido e reescrito; o token original não ficou em disco.
+
+**Desvio do plano**: sem Redis/BullMQ no M2. A manutenção usa um timer simples (`ponytail:` no código), suficiente para 1 instância. O BullMQ entra no M5, onde o deploy precisa de fila e retentativa.
+
+**Limites conhecidos**: o timer não é seguro com várias réplicas (usar `pg_try_advisory_lock`); o pacote em `uploads/` expira em 7 dias sem pedido (o M5 copia o pacote para um prefixo permanente quando o pedido for pago).
+
+**Próximo: M3** (addon WHMCS: checkout, HMAC, hooks). Precisa de você: duplicar o Speed BR como produto oculto, e subir o addon por zip no cPanel do WHMCS.
+
+
+---
+
+## 10. M3 concluído (2026-09-24)
+
+**Entregue**
+- **Addon WHMCS** (`whmcs/modules/addons/waycloud_ai/`, PHP 8.1): configuração, criação idempotente das tabelas (`_activate`/`_upgrade`), painel admin (diagnóstico, mapa de planos, contratações e eventos, sem dados pessoais), página de checkout (mobile-first, validação de CPF e CNPJ em tempo real, incluindo o CNPJ alfanumérico de 2026), API assinada para o serviço MCP, e hooks `InvoicePaid`, `AfterModuleCreate`, `AfterModuleCreateFailed` e `AfterCronJob`.
+- **Fluxo**: link com token de uso único (só o hash é guardado, validade 48 h, um link novo cancela o anterior) → cadastro rápido → `AddClient` (endereço padrão, CPF/CNPJ nos campos personalizados) → `AddOrder` (Pix Efí, domínio provisório `<slug>.sites.wayleads.com.br`) → `CreateSsoToken` para a fatura. Cliente já existente precisa entrar na conta; nunca se anexa pedido a conta alheia. Duplo envio e concorrência criam um único pedido (compare-and-set no banco).
+- **Webhooks para o MCP**: fila (outbox) com HMAC-SHA256 + timestamp + nonce e reenvio com backoff pelo cron do WHMCS. Payloads só com IDs, nunca e-mail, CPF, telefone ou senha (há teste para isso).
+- **Serviço MCP**: `criar_checkout` (ferramenta 4 de 11 completas na Fase 1), cliente assinado do addon (recusa link fora do host do WHMCS), `ADDON_URL`/`ADDON_HMAC_SECRET`.
+- **Ferramentas**: `pnpm build:addon` (zip), `pnpm checkout:dev` (gera link de teste sem o MCP), `pnpm test:php`.
+
+**Verificação** (o que realmente rodou)
+- PHP 8.1 (a versão do WHMCS): lint de todos os arquivos, **35 testes** do núcleo com fakes e **14** do contrato do armazenamento, este último rodando o `CapsuleStore` e o `Schema` no query builder real do Laravel (SQLite), que é a base do `Capsule` do WHMCS.
+- Node: 92 testes; **6 testes Node ↔ código PHP real** (opt-in `PHP_E2E=1`): assinatura idêntica nas duas linguagens (com acentos), link de checkout, planos, recusa de segredo errado, adulteração, replay e timestamp velho.
+- Testes de mutação: removida a trava contra pedido duplicado, um teste falha (o teste original não pegava; foi reescrito para concorrência real).
+
+**Não verificável sem o seu WHMCS** (lista em `docs/whmcs-instalacao.md`, seção 3): nomes exatos de alguns parâmetros de `localAPI` e variáveis dos hooks, CSRF/Smarty na página de addon, exigência de endereço pela Efí/Iugu, e o Plesk aceitar o domínio provisório. O painel de diagnóstico e o roteiro de homologação cobrem cada ponto.
+
+**Ajuste de segurança**: o segredo HMAC fica em campo de texto do addon (não criptografado no banco), como a maioria das chaves de módulos; teto conhecido, migrar para armazenamento cifrado se o acesso ao banco/admin for ampliado.
+
+**Próximo: M4** (ponte pedido → pagamento → provisionamento no serviço MCP): receptor `POST /webhooks/whmcs`, `status_pedido`, planos vindos do addon (o mapa de planos passa a valer também para `listar_planos`; hoje a semente de preços usa os pids públicos).
+
+
+---
+
+## 11. M4 concluído (2026-09-24)
+
+**Entregue**
+- **Receptor de webhooks** `POST /webhooks/whmcs` no serviço MCP: HMAC sobre os bytes exatos recebidos (rota com corpo bruto, isolada da rota `/mcp`), janela de 5 min, nonce contra replay, 401 opaco para qualquer falha de autenticação.
+- **Processamento idempotente e transacional**: cada evento traz o id da fila do addon (`webhook_events`); o reenvio com o mesmo id é reconhecido como duplicado. Tudo roda numa transação: se algo falha, nada fica gravado e o addon reenvia depois.
+- **Ordem dos eventos**: pedidos só avançam (`aguardando_pagamento` → `pago` → `ativo`/`falhou`); um evento atrasado nunca desfaz o estado nem o rebaixa, mas ainda preenche os IDs. `ativo` e `falhou` são finais. Sessão desconhecida (já apagada) é reconhecida sem reenvio infinito.
+- **`status_pedido`**: `sem_pedido`, `aguardando_pagamento`, `pago`, `ativo`, `falhou`, com mensagem em português e intervalo sugerido de consulta (30 s aguardando, 5 s pago, 0 nos estados finais). Falha de provisionamento aparece sem detalhe técnico.
+- **`service.active`** grava a assinatura (domínio provisório, servidor `whmcs-<id>`, plano) para o deploy do M5.
+- **Planos vindos do addon** (`planCatalog`): preço e pid ficam no WHMCS (cache de 5 min; se o addon cair serve o último bom; sem cache falha em vez de inventar; pausa de 30 s para não travar cada chamada no timeout). Limites de disco e domínios ficam no serviço, por tipo. `listar_planos`, `analisar_projeto` e `criar_checkout` usam esse catálogo. Sem addon configurado (dev) usam a semente.
+
+**Verificação**: 116 testes Node (7 deles exercitam o **código PHP real** nas duas direções: Node→PHP e PHP→Node), 35 + 14 no PHP 8.1. O teste PHP→Node cobre o cenário completo: serviço fora do ar (3 eventos ficam na fila, status 0), depois no ar (3 entregas, 200), aplicados em ordem, `status_pedido` chega a `ativo`.
+
+**Achados**
+1. A Cloudflare (regra "Bad Bot") barra requisições **sem User-Agent** ou em **HTTP/1.0**. O cliente do serviço e o do addon sempre enviam User-Agent em HTTP/1.1, então não é preciso exceção de WAF (testado contra o `app.waycloud.com.br`).
+2. Meus testes tinham dois erros próprios (relógio falso assinando timestamp no futuro; `spawnSync` travando o servidor no mesmo processo). Ambos corrigidos; o código de produção estava certo.
+
+**Produtos ocultos**: Speed = pid 223, Boost = pid 224 (mapa de planos do addon: estático/SPA → 223, PHP → 224).
+
+**Ainda não feito**: o serviço não está no Easypanel, e o addon não está no WHMCS. Sem os dois, o ciclo completo em produção ainda não roda.

@@ -1,0 +1,8 @@
+# Only api.php and index/clientarea entry points are meant to be reached from the web.
+<IfModule mod_authz_core.c>
+    Require all denied
+</IfModule>
+<IfModule !mod_authz_core.c>
+    Order allow,deny
+    Deny from all
+</IfModule>

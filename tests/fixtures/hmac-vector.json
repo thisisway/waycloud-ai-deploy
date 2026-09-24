@@ -1,0 +1,7 @@
+{
+  "secret": "0123456789abcdef0123456789abcdef",
+  "ts": 1700000000,
+  "nonce": "n0nce-abc12345",
+  "body": "{\"action\":\"create_checkout\",\"session_id\":\"6f1c2d3e-0000-4000-8000-0123456789ab\",\"pid\":173,\"cycle\":\"monthly\",\"nota\":\"ação\"}",
+  "signature": "673a70385e725b5b808b8ee9ba033f0ec7f936ff9867e4644e6687b3e934486d"
+}
