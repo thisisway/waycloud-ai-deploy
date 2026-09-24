@@ -216,3 +216,23 @@ Ferramentas de admin do MVP no addon: mapa tipo→produto, limites, chaves HMAC,
 **Produtos ocultos**: Speed = pid 223, Boost = pid 224 (mapa de planos do addon: estático/SPA → 223, PHP → 224).
 
 **Ainda não feito**: o serviço não está no Easypanel, e o addon não está no WHMCS. Sem os dois, o ciclo completo em produção ainda não roda.
+
+
+---
+
+## 12. Em produção (2026-09-24)
+
+**No ar**
+- **Addon WHMCS 0.3.2** em `app.waycloud.com.br` (conta cPanel `waycloud`), ativado. Tabelas criadas, segredo HMAC gravado, mapa de planos = estático/SPA → pid 223 e PHP → pid 224. Diagnóstico do painel: todos os itens OK.
+- **Serviço MCP** no Easypanel, projeto `web-way`, serviços `waycloud-ai-mcp` (a partir do GitHub, `thisisway/waycloud-ai-deploy`, Dockerfile em `apps/mcp-service`) e `waycloud-ai-db` (Postgres 17). Endereço provisório: `https://web-way-waycloud-ai-mcp.fzd763.easypanel.host` (o addon já aponta para ele). O DNS `mcp.waycloud.com.br` fica para depois.
+- Teste ponta a ponta pelo MCP público: `iniciar_sessao` → `listar_planos` (preços vindos do WHMCS) → `analisar_projeto` → `enviar_arquivos` (R2) → `criar_previa` → `criar_checkout` (link real) → `status_pedido` (`sem_pedido`).
+
+**Achados que só a produção mostrou**
+1. **"Celular" é campo de cliente obrigatório** no seu WHMCS: o cadastro rápido não o preenchia e a primeira compra real falharia. Corrigido (0.3.2), e o diagnóstico agora avisa de qualquer campo obrigatório que o checkout não cubra.
+2. O cache do PHP (opcache) mantinha o código antigo porque o zip gravava todas as datas fixas; o empacotamento agora usa a data real.
+3. O plano do Easypanel não permite mais de 3 projetos: os serviços ficaram dentro de `web-way`.
+4. O PowerShell prefixa 3 bytes (BOM) ao enviar texto por pipe: o segredo foi regravado filtrando só hexadecimal.
+
+**Ainda por fazer**
+- Compra real de teste (link -> cadastro -> fatura -> pagamento -> `ativo`).
+- Prévias em produção: o Nginx da prévia depende de volume compartilhado, e o Easypanel não garante a permissão de escrita para o usuário do serviço. Proposta: o próprio serviço servir a prévia pelo `Host` (`<slug>.wayleads.com.br`), recriando a pasta a partir do pacote no R2 quando ela sumir num redeploy. Depende do DNS `*.wayleads.com.br`.
