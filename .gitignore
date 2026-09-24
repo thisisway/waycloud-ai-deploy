@@ -4,3 +4,4 @@ dist/
 *.log
 tests/php/vendor/
 tests/php/composer.lock
+scripts/tmp-*

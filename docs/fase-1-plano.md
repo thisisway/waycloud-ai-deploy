@@ -243,3 +243,27 @@ Link do checkout -> cadastro rápido -> `AddClient` (com "Celular") -> `AddOrder
 Confirmado na prática: nomes de parâmetros de `AddClient`/`AddOrder`/`CreateSsoToken`, variáveis dos hooks (`params.serviceid`, `params.serverid`), CSRF e Smarty na página de addon, atribuição automática do servidor 18 pelo grupo de servidores.
 Ainda não exercitado: pagamento real de Pix (confirmação da Efí), cartão pela Iugu, falha de provisionamento (`AfterModuleCreateFailed`).
 O serviço #1011 foi mantido ativo para testar o deploy do M5; cancelar ao final.
+
+
+---
+
+## 13. M5 concluído (2026-09-24): publicar, status_deploy, verificar_site e agente de deploy
+
+**Serviço** (em produção no Easypanel, migração `0003` aplicada)
+- `publicar`: só com pedido `ativo`; monta um pacote **só com a pasta do site** (SPA ganha o fallback do histórico em `.htaccess`, a menos que o projeto traga o seu) e enfileira o deploy. A fila é o próprio Postgres (`FOR UPDATE SKIP LOCKED`).
+- `status_deploy` (`na_fila`, `enviando`, `validando`, `publicado`, `falhou`, `revertido`, com intervalo de consulta e URL) e `verificar_site` (HTTP, HTTPS, tempo de resposta e links internos quebrados; sem SSRF: só o domínio da assinatura, redirects só dentro do mesmo host). Uma sessão só enxerga os próprios deploys; o código de erro do agente nunca chega à IA.
+- API do agente (`/agent/v1`): token por servidor (só o hash é guardado; o token antigo morre ao trocar), `jobs/next`, `package`, `report`, `ping`, e o próprio agente e instalador (o repositório é privado). Transições de estado validadas; um servidor não toca nos jobs de outro. Jobs parados viram `failed` (`agent_timeout` / `agent_unavailable`).
+
+**Agente** (`agent/`, Bash, roda como root no Plesk): valida cada campo do job, confere o SHA-256 antes de extrair, extrai numa pasta privada e sanitiza, **troca o docroot por dois `mv`**, guarda o anterior como snapshot (em pasta root-only fora da área do cliente), ajusta o PHP, faz checagem local e **restaura sozinho** se algo falhar depois da troca. Let's Encrypt é tentado; sem DNS apontado o site fica em HTTP até o certificado sair.
+
+**Verificação**
+- 26 testes do serviço + **9 do agente rodando de verdade** num contêiner que imita o Plesk (usuário e grupo do site, `plesk` falso, servidor web por Host): publicação atômica com dono/permissões preservados, hash adulterado, site que responde 500 depois da troca (rollback), pacote sem index, PHP (e recusa do Plesk), poda de snapshots, domínios maliciosos e symlink, token errado e instância única.
+- **Mutações**: sem a checagem do hash, sem validar o domínio, sem o rollback e sem recusar symlink, um teste falha em cada caso (o teste do symlink era fraco e foi reforçado).
+- shellcheck limpo no agente e no instalador.
+
+**Achados**
+1. O agente mandava `Content-Type: application/json` em requisições sem corpo e o Fastify respondia 400: teria quebrado em produção. Corrigido nos dois lados.
+2. Minha expressão `jq` do relatório nem compilava no jq 1.6; e uma validação recusaria códigos de erro com números (`sha256_mismatch`). Todos pegos pelo teste real.
+3. O Easypanel classifica `updateAppEnv` e `deployAppService` como destrutivos; o env foi enviado completo.
+
+**Pendente**: instalar o agente no Plesk (exige root, com você presente) e validar de verdade: servidor web real (Apache, nginx ou LiteSpeed), `plesk bin site --update` para PHP, comando do Let's Encrypt, comportamento do `.htaccess` do SPA e permissões do `httpdocs` do Plesk.
