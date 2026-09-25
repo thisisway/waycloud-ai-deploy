@@ -21,12 +21,42 @@ export interface AddonPlan {
   annualCents: number;
 }
 
+/** The sign-up form fields, exactly as the addon expects them (it validates them and answers in pt-BR). */
+export interface SignupForm {
+  nome: string;
+  email: string;
+  doc_tipo: "CPF" | "CNPJ";
+  doc_numero: string;
+  telefone: string;
+  aceite: boolean;
+  website: string;
+}
+
+export interface SignupResult {
+  ok: boolean;
+  /** Field name -> message for the customer (fixed texts written by the addon). */
+  errors: Record<string, string>;
+  /** Logged-in WHMCS invoice URL, on the same host as the addon. */
+  redirect: string | null;
+  checkoutId: number | null;
+  /** For a customer who already has an account: the WHMCS page that can attach the order to it. */
+  fallbackUrl: string | null;
+}
+
 export interface AddonClient {
+  registerCheckout(req: { sessionId: string; pid: number; cycle: "monthly" | "annually"; form: SignupForm }): Promise<SignupResult>;
   createCheckout(req: { sessionId: string; pid: number; cycle: "monthly" | "annually" }): Promise<{ checkoutId: number; url: string; expiresAt: string }>;
   plans(): Promise<AddonPlan[]>;
 }
 
 const checkoutResponse = z.object({ checkout_id: z.number().int(), checkout_url: z.string().url(), expires_at: z.string() });
+const signupResponse = z.object({
+  ok: z.boolean(),
+  errors: z.union([z.record(z.string()), z.array(z.never())]), // PHP encodes an empty map as []
+  redirect: z.string().url().nullable(),
+  checkout_id: z.number().int().nullable(),
+  fallback_url: z.string().url().nullable(),
+});
 const plansResponse = z.object({
   plans: z.array(z.object({ type: z.enum(["static", "php"]), pid: z.number().int(), name: z.string(), monthly_cents: z.number().int(), annual_cents: z.number().int() })),
 });
@@ -67,6 +97,15 @@ export function httpAddonClient(cfg: AddonConfig): AddonClient {
   }
 
   return {
+    async registerCheckout(r) {
+      const parsed = signupResponse.safeParse(await call({ action: "register_checkout", session_id: r.sessionId, pid: r.pid, cycle: r.cycle, form: r.form }));
+      if (!parsed.success) throw new AddonError("bad_response", 200);
+      const d = parsed.data;
+      // Both links are opened by the customer: they must live on the WHMCS we called, never somewhere else.
+      for (const url of [d.redirect, d.fallback_url]) if (url && new URL(url).host !== new URL(cfg.url).host) throw new AddonError("unexpected_host", 200);
+      return { ok: d.ok, errors: Array.isArray(d.errors) ? {} : d.errors, redirect: d.redirect, checkoutId: d.checkout_id, fallbackUrl: d.fallback_url };
+    },
+
     async createCheckout(r) {
       const parsed = checkoutResponse.safeParse(await call({ action: "create_checkout", session_id: r.sessionId, pid: r.pid, cycle: r.cycle }));
       if (!parsed.success) throw new AddonError("bad_response", 200);

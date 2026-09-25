@@ -82,6 +82,11 @@ final class LocalWhmcsApi implements WhmcsApi
         ];
     }
 
+    public function sendPasswordReset(string $email): void
+    {
+        $this->call('ResetPassword', ['email' => $email]); // verify: WHMCS 8 API (ResetPassword sends the reset-validation e-mail)
+    }
+
     public function createSsoUrl(int $clientId, string $path): ?string
     {
         try {

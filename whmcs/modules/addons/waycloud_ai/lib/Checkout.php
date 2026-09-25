@@ -35,6 +35,36 @@ final class Checkout
      */
     public function createFromMcp(array $req): array
     {
+        $c = $this->newCheckout($req);
+        return ['checkout_id' => $c['id'], 'checkout_url' => $this->checkoutUrl($c['token']), 'expires_at' => $c['expires_at']];
+    }
+
+    /**
+     * Sign-up on the public site (relayed by the MCP service): same checks and same order flow as the WHMCS page,
+     * but with no password. The customer defines it later from an e-mail, so it never crosses our service.
+     * @param array<string,mixed> $req session_id, pid, cycle and `form` (the sign-up fields)
+     * @return array{ok:bool, errors:array<string,string>, redirect:?string, checkout_id:?int, fallback_url:?string}
+     */
+    public function registerFromWeb(array $req): array
+    {
+        $form = is_array($req['form'] ?? null) ? $req['form'] : [];
+        // Answered before anything is created, so bots and typos do not leave rows behind.
+        if (trim((string) ($form['website'] ?? '')) !== '') {
+            return ['ok' => false, 'errors' => ['_form' => 'Não foi possível concluir o cadastro. Tente novamente.'], 'redirect' => null, 'checkout_id' => null, 'fallback_url' => null];
+        }
+        $errors = $this->validate($form, false, true);
+        if ($errors) {
+            return ['ok' => false, 'errors' => $errors, 'redirect' => null, 'checkout_id' => null, 'fallback_url' => null];
+        }
+        $c = $this->newCheckout($req);
+        $r = $this->submit($c['token'], $form, null, true);
+        // An existing customer continues on the WHMCS page (it knows how to attach the order to a logged-in account).
+        return ['ok' => $r['ok'], 'errors' => $r['errors'], 'redirect' => $r['redirect'], 'checkout_id' => $c['id'], 'fallback_url' => $r['login_url'] !== null ? $this->checkoutUrl($c['token']) : null];
+    }
+
+    /** @param array<string,mixed> $req @return array{id:int, token:string, expires_at:string} */
+    private function newCheckout(array $req): array
+    {
         $sessionId = (string) ($req['session_id'] ?? '');
         if (!preg_match('/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i', $sessionId)) {
             throw new ApiException('invalid_session');
@@ -69,11 +99,12 @@ final class Checkout
         ]);
         $this->store->logEvent('checkout.created', (string) $id, ['pid' => $pid, 'cycle' => $cycle], $now);
 
-        return [
-            'checkout_id' => $id,
-            'checkout_url' => rtrim($this->whmcs->systemUrl(), '/') . '/index.php?m=waycloud_ai&t=' . $token,
-            'expires_at' => gmdate('c', $now + $this->settings->ttlSeconds()),
-        ];
+        return ['id' => $id, 'token' => $token, 'expires_at' => gmdate('c', $now + $this->settings->ttlSeconds())];
+    }
+
+    private function checkoutUrl(string $token): string
+    {
+        return rtrim($this->whmcs->systemUrl(), '/') . '/index.php?m=waycloud_ai&t=' . $token;
     }
 
     // ---- customer in the browser ----------------------------------------------------------------
@@ -98,7 +129,7 @@ final class Checkout
      * @param array<string,mixed> $in raw form fields
      * @return array{ok:bool, state:string, errors:array<string,string>, redirect:?string, login_url:?string}
      */
-    public function submit(string $token, array $in, ?int $loggedInClientId = null): array
+    public function submit(string $token, array $in, ?int $loggedInClientId = null, bool $passwordless = false): array
     {
         $row = $this->find($token);
         $state = $this->stateOf($row);
@@ -110,7 +141,7 @@ final class Checkout
             return $this->result(false, 'invalid');
         }
 
-        $errors = $this->validate($in, $loggedInClientId !== null);
+        $errors = $this->validate($in, $loggedInClientId !== null, $passwordless);
         if ($errors) {
             return $this->result(false, 'ready', $errors);
         }
@@ -124,7 +155,7 @@ final class Checkout
             } else {
                 $email = trim((string) $in['email']);
                 if ($this->whmcs->findClientIdByEmail($email) !== null) {
-                    return $this->emailExists();
+                    return $this->emailExists($passwordless);
                 }
                 $ids = $this->whmcs->clientCustomFieldIds();
                 if (!isset($ids['Tipo de documento'], $ids['CPF/CNPJ'])) {
@@ -132,9 +163,12 @@ final class Checkout
                     return $this->result(false, 'ready', ['_form' => 'Cadastro temporariamente indisponível. Tente novamente em alguns minutos.']);
                 }
                 try {
-                    $clientId = $this->whmcs->addClient($this->clientPayload($in, $ids));
+                    $clientId = $this->whmcs->addClient($this->clientPayload($in, $ids, $passwordless));
                 } catch (WhmcsApiError $e) {
-                    return $this->clientError($e);
+                    return $this->clientError($e, $passwordless);
+                }
+                if ($passwordless) {
+                    $this->sendSetPasswordEmail(trim((string) $in['email']));
                 }
             }
             $this->store->updateCheckout($id, ['client_id' => $clientId, 'status' => 'client_created'], ['new']);
@@ -258,7 +292,7 @@ final class Checkout
     }
 
     /** @param array<string,mixed> $in @return array<string,string> */
-    private function validate(array $in, bool $loggedIn): array
+    private function validate(array $in, bool $loggedIn, bool $passwordless = false): array
     {
         $e = [];
         if (empty($in['aceite'])) {
@@ -283,7 +317,7 @@ final class Checkout
             $e['telefone'] = 'Informe um telefone com DDD.';
         }
         $senha = (string) ($in['senha'] ?? '');
-        if (strlen($senha) < 8 || strlen($senha) > 64) {
+        if (!$passwordless && (strlen($senha) < 8 || strlen($senha) > 64)) {
             $e['senha'] = 'A senha precisa ter de 8 a 64 caracteres.';
         }
         return $e;
@@ -313,7 +347,7 @@ final class Checkout
     }
 
     /** @param array<string,mixed> $in @param array<string,int> $ids @return array<string,string> */
-    private function clientPayload(array $in, array $ids): array
+    private function clientPayload(array $in, array $ids, bool $passwordless = false): array
     {
         $nome = preg_split('/\s+/', trim((string) $in['nome']), 2) ?: [];
         $type = (string) $in['doc_tipo'];
@@ -327,7 +361,7 @@ final class Checkout
             'postcode' => $this->settings->get('default_postcode'),
             'country' => 'BR',
             'phonenumber' => (string) self::phone((string) $in['telefone']),
-            'password2' => (string) $in['senha'],
+            'password2' => $passwordless ? bin2hex(($this->randomBytes)(24)) : (string) $in['senha'], // passwordless: an unknown random one until the customer sets theirs
             'notes' => 'Cadastro rápido via IA: endereço a completar pelo cliente.',
             'customfields' => base64_encode(serialize(array_filter([
                 $ids['Tipo de documento'] => $type,
@@ -339,25 +373,57 @@ final class Checkout
     }
 
     /** @return array{ok:bool, state:string, errors:array<string,string>, redirect:?string, login_url:?string} */
-    private function emailExists(): array
+    private function emailExists(bool $web = false): array
     {
-        $r = $this->result(false, 'ready', ['email' => 'Já existe uma conta com este e-mail. Entre na sua conta e abra este link novamente.']);
+        $r = $this->result(false, 'ready', ['email' => $web
+            ? 'Já existe uma conta com este e-mail. Entre na sua conta para continuar a contratação.'
+            : 'Já existe uma conta com este e-mail. Entre na sua conta e abra este link novamente.']);
         $r['login_url'] = rtrim($this->whmcs->systemUrl(), '/') . '/clientarea.php';
         return $r;
     }
 
     /** @return array{ok:bool, state:string, errors:array<string,string>, redirect:?string, login_url:?string} */
-    private function clientError(WhmcsApiError $e): array
+    private function clientError(WhmcsApiError $e, bool $web = false): array
     {
         $m = strtolower($e->getMessage());
         if (str_contains($m, 'password')) {
             return $this->result(false, 'ready', ['senha' => 'A senha é fraca. Use letras, números e símbolos.']);
         }
         if (str_contains($m, 'email') && (str_contains($m, 'exist') || str_contains($m, 'already'))) {
-            return $this->emailExists();
+            return $this->emailExists($web);
         }
         $this->alert('Checkout AI: falha ao criar o cliente', $e->getMessage());
         return $this->result(false, 'ready', ['_form' => 'Não foi possível criar seu cadastro agora. Tente novamente em alguns minutos.']);
+    }
+
+    /** The customer defines the password from an e-mail; a failure is for the admin to see, it must not block the purchase. */
+    private function sendSetPasswordEmail(string $email): void
+    {
+        try {
+            $this->whmcs->sendPasswordReset($email);
+        } catch (WhmcsApiError $e) {
+            $this->alert('Checkout AI: não foi possível enviar o e-mail de definição de senha', $e->getMessage());
+        }
+    }
+
+    /**
+     * Shown on the WHMCS invoice page of an AI checkout: the way back to the public site, which keeps following the order
+     * and publishes on its own. Once the invoice is paid it sends the customer back by itself.
+     * @param array<string,mixed> $vars WHMCS template variables of the page
+     */
+    public function invoiceBanner(array $vars): string
+    {
+        $invoiceId = (int) ($vars['invoiceid'] ?? 0);
+        if (($vars['filename'] ?? '') !== 'viewinvoice' || $invoiceId <= 0 || $this->store->findCheckoutBy('invoice_id', $invoiceId) === null) {
+            return '';
+        }
+        $back = htmlspecialchars($this->settings->get('public_url'), ENT_QUOTES);
+        $paid = strtolower((string) ($vars['status'] ?? '')) === 'paid';
+        $msg = $paid ? 'Pagamento confirmado! Estamos levando você de volta para a Way Cloud, onde o seu site é publicado.' : 'Depois de pagar, volte para a Way Cloud: o seu site é publicado sozinho assim que o pagamento for confirmado.';
+        $redirect = $paid ? "setTimeout(function(){location.href='" . $back . "';},3500);" : '';
+        return '<div id="waycloud-back" style="position:fixed;top:0;left:0;right:0;z-index:99999;background:#1d66ff;color:#fff;font:600 14px/1.4 system-ui,sans-serif;padding:10px 16px;text-align:center">'
+            . $msg . ' <a href="' . $back . '" style="color:#fff;text-decoration:underline;margin-left:8px">Voltar para a Way Cloud</a></div>'
+            . '<script>document.body.style.paddingTop="44px";' . $redirect . '</script>';
     }
 
     private function alert(string $subject, string $message): void

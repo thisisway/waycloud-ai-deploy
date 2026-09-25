@@ -1,4 +1,4 @@
-import { Api, brl, ensureSession, sendZip } from "./flow.js";
+import { Api, brl, checkForm, ensureSession, maskDoc, maskPhone, sendZip, signup } from "./flow.js";
 import { startRibbons } from "./ribbons.js";
 
 const $ = (id) => document.getElementById(id);
@@ -27,8 +27,8 @@ const save = (patch) => {
 };
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 const MAX_BYTES = 100 * 1024 * 1024; // keep in sync with MAX_WEB_ZIP_BYTES in web.ts
-const SECTIONS = ["s-upload", "s-preview", "s-plans", "s-wait", "s-deploy"];
-const STEP_NAMES = ["Enviar", "Prévia", "Plano", "No ar"];
+const SECTIONS = ["s-upload", "s-preview", "s-plans", "s-signup", "s-wait", "s-deploy"];
+const STEP_NAMES = ["Enviar", "Prévia", "Contratar", "No ar"];
 const STAGE_OF = { na_fila: 0, enviando: 1, validando: 2, publicado: 3 };
 let cycle = "mensal";
 let run = 0; // bumped to stop a polling loop that is no longer wanted
@@ -140,7 +140,7 @@ function planCard(p, best) {
   }
   const btn = text("button", "Contratar", best ? "btn" : "btn line");
   btn.type = "button";
-  btn.addEventListener("click", () => checkout(p.pid, btn));
+  btn.addEventListener("click", () => openSignup(p));
   buy.append(btn);
 
   card.append(info, buy);
@@ -160,20 +160,62 @@ async function showPlans() {
   // The stepper marks "Prévia" as done once the visitor is choosing a plan.
 }
 
-async function checkout(pid, btn) {
+// ---- 2b. sign-up (the customer's data goes to /web/checkout; nothing personal is kept in the browser) -----------------
+let chosen = null;
+const FIELD_OF = { nome: "nome", email: "email", doc_numero: "doc", telefone: "tel", aceite: "aceite", _form: "form" };
+const showFieldError = (key, msg) => {
+  const p = $(`e-${key}`);
+  p.textContent = msg ?? "";
+  p.hidden = !msg;
+  const input = { nome: "f-nome", email: "f-email", doc: "f-doc", tel: "f-tel", aceite: "f-aceite" }[key];
+  if (input) $(input).setAttribute("aria-invalid", msg ? "true" : "false");
+};
+const clearFieldErrors = () => Object.values(FIELD_OF).forEach((k) => showFieldError(k, ""));
+
+function openSignup(plan) {
   clearAlert();
-  btn.disabled = true;
-  try {
-    const r = await api.tool("criar_checkout", { sessao_id: state.sessao_id, plano_pid: pid, ciclo: cycle });
-    if (!r.ok) throw new Error(r.mensagem_para_usuario);
-    save({ stage: "waiting", checkout_url: r.dados.url_checkout });
-    window.open(r.dados.url_checkout, "_blank", "noopener");
-    showWaiting();
-  } catch (e) {
-    showAlert(e instanceof Error ? e.message : "Não consegui gerar o link de pagamento.");
-  } finally {
-    btn.disabled = false;
+  clearFieldErrors();
+  $("signup-fallback").hidden = true;
+  const monthly = cycle === "mensal";
+  chosen = { pid: plan.pid };
+  $("signup-plan").textContent = `${plan.nome} · ${brl(monthly ? plan.preco_mensal_centavos : plan.preco_anual_centavos)} ${monthly ? "por mês" : "por ano"}`;
+  view(3, "s-preview", "s-signup");
+  $("f-nome").focus();
+}
+
+async function submitSignup(event) {
+  event.preventDefault();
+  clearAlert();
+  clearFieldErrors();
+  $("signup-fallback").hidden = true;
+  const f = $("signup");
+  const values = { nome: f.nome.value, email: f.email.value, doc_tipo: f.doc_tipo.value, doc_numero: f.doc_numero.value, telefone: f.telefone.value, aceite: f.aceite.checked };
+  const local = checkForm(values);
+  if (Object.keys(local).length) {
+    for (const [k, msg] of Object.entries(local)) showFieldError(FIELD_OF[k], msg);
+    const first = ["nome", "email", "doc_numero", "telefone", "aceite"].find((k) => local[k]);
+    $({ nome: "f-nome", email: "f-email", doc_numero: "f-doc", telefone: "f-tel", aceite: "f-aceite" }[first]).focus();
+    return;
   }
+  const button = $("signup-submit");
+  button.disabled = true;
+  button.textContent = "Enviando...";
+  const r = await signup(api, { sessao_id: state.sessao_id, plano_pid: chosen.pid, ciclo: cycle, ...values, nome: values.nome.trim(), email: values.email.trim(), website: f.website.value });
+  if (r.ok) {
+    save({ stage: "waiting", checkout_url: r.redirect });
+    location.assign(r.redirect); // the payment page; the visitor comes back here and this page carries on by itself
+    return;
+  }
+  button.disabled = false;
+  button.textContent = "Continuar para o pagamento";
+  for (const [k, msg] of Object.entries(r.errors)) if (FIELD_OF[k]) showFieldError(FIELD_OF[k], msg);
+  if (r.fallbackUrl) {
+    $("fallback-link").href = r.fallbackUrl;
+    $("signup-fallback").hidden = false;
+  }
+  if (r.status === 429) showAlert("Muitas tentativas. Aguarde alguns minutos e tente de novo.");
+  else if (r.status === 401) showAlert("A sua sessão expirou. Clique em \"Começar de novo\" e envie o arquivo outra vez.");
+  else if (!Object.keys(r.errors).length) showAlert(r.mensagem ?? "Não consegui concluir o cadastro agora. Tente de novo em instantes.");
 }
 
 // ---- 3. payment -> publish ----------------------------------------------------------------
@@ -297,6 +339,18 @@ document.querySelectorAll("[data-copy]").forEach((b) =>
 );
 
 startRibbons($("ribbons"));
+
+$("signup").addEventListener("submit", submitSignup);
+$("change-plan").addEventListener("click", () => (clearAlert(), view(3, "s-preview", "s-plans")));
+$("f-tel").addEventListener("input", (e) => (e.target.value = maskPhone(e.target.value)));
+const docInput = () => {
+  const cnpj = $("f-tipo").value === "CNPJ";
+  $("f-doc").placeholder = cnpj ? "00.000.000/0000-00" : "000.000.000-00";
+  $("f-doc").inputMode = cnpj ? "text" : "numeric";
+  $("f-doc").value = maskDoc($("f-tipo").value, $("f-doc").value);
+};
+$("f-tipo").addEventListener("change", docInput);
+$("f-doc").addEventListener("input", docInput);
 
 $("mcp-url").textContent = `${location.origin}/mcp`;
 $("cli-prompt").textContent = `Quero publicar este site na Way Cloud. Leia ${location.origin}/llms.txt e siga as instruções. Se você não conseguir acessar a internet ou rodar comandos, gere o site completo em um único arquivo .zip (com a pasta compilada, sem node_modules nem .env) e me entregue para eu enviar em ${location.origin}.`;

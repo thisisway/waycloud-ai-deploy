@@ -41,6 +41,8 @@ Os detalhes abaixo seguem a documentação do WHMCS, mas não puderam ser exerci
 - Variáveis dos hooks `AfterModuleCreate` (`params.serviceid`, `params.serverid`) e `AfterModuleCreateFailed` (`failureResponseMessage`).
 - Formulário do checkout em página de addon: token CSRF do WHMCS e renderização do Smarty.
 - Se Efí (Pix) e Iugu (cartão) aceitam o **endereço padrão** ("Não informado", CEP 00000-000). Se recusarem, o próximo passo é pedir só o CEP na tela (com preenchimento automático do endereço).
+- `ResetPassword` (versão 0.4.0): o cadastro pela página `waypreview.com.br` não pede senha; logo depois de criar o cliente o addon pede ao WHMCS o e-mail de "definir senha". Se essa chamada não existir na sua versão, o cadastro continua e o addon avisa o admin (sem bloquear a compra); nesse caso o cliente usa "Esqueci a senha" na área do cliente.
+- Banner da fatura (versão 0.4.0, hook `ClientAreaFooterOutput`): a fatura de uma compra vinda da página mostra o botão "Voltar para a Way Cloud" e, depois de paga, volta sozinha. Confira se aparece na fatura (`viewinvoice.php`) e se o tema não esconde o rodapé.
 - Se o Plesk aceita criar a assinatura em `<slug>.sites.waypreview.com.br` sem que o DNS já exista.
 
 ## 4. Desfazer

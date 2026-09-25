@@ -483,5 +483,99 @@ test('ping, plans, create_checkout, unknown action and invalid json', function (
     eq(400, $e['api']->handle('POST', ['x-waycloud-timestamp' => (string) $sig['ts'], 'x-waycloud-nonce' => $sig['nonce'], 'x-waycloud-signature' => $sig['signature']], $raw)[0]);
 });
 
+echo "\nWeb sign-up (no password)\n";
+$web = static fn (array $form, int $pid = 173, string $cycle = 'monthly'): array => ['session_id' => SESSION, 'pid' => $pid, 'cycle' => $cycle, 'form' => $form];
+$validWeb = array_diff_key($valid, ['senha' => 1]);
+test('creates client (random password) + order, asks WHMCS to e-mail the set-password link, returns the SSO invoice URL', function () use ($web, $validWeb) {
+    $e = make();
+    $r = $e['checkout']->registerFromWeb($web($validWeb));
+    eq([true, 'https://app.test/sso/abc', null], [$r['ok'], $r['redirect'], $r['fallback_url']]);
+    [, $client] = $e['whmcs']->calls[0];
+    yes((bool) preg_match('/^[0-9a-f]{48}$/', $client['password2']), 'a random password, never one typed by the customer');
+    eq(['reset', ['maria@example.com']], $e['whmcs']->calls[1], 'set-password e-mail requested right after the account exists');
+    eq(['addOrder', 'sso'], [$e['whmcs']->calls[2][0], $e['whmcs']->calls[3][0]]);
+    eq('ordered', $e['store']->checkouts[1]['status']);
+    eq(1, $r['checkout_id']);
+});
+test('each account gets its own random password', function () use ($web, $validWeb) {
+    $e = make(); // the test random source advances between calls, like the real one
+    $e['checkout']->registerFromWeb($web($validWeb));
+    $e['checkout']->registerFromWeb($web(['email' => 'joao@example.com'] + $validWeb));
+    $pw = array_map(fn ($c) => $c[1]['password2'], array_values(array_filter($e['whmcs']->calls, fn ($c) => $c[0] === 'addClient')));
+    eq(2, count($pw));
+    yes($pw[0] !== $pw[1], 'passwords differ');
+});
+test('a failing set-password e-mail does not block the purchase, the admin is alerted', function () use ($web, $validWeb) {
+    $e = make();
+    $e['whmcs']->failReset = 'ResetPassword not available';
+    $r = $e['checkout']->registerFromWeb($web($validWeb));
+    eq(true, $r['ok']);
+    eq(1, count($e['whmcs']->alerts), 'admin alerted');
+});
+test('validation errors and the honeypot create no checkout row and no client', function () use ($web, $validWeb) {
+    $e = make();
+    $bad = $e['checkout']->registerFromWeb($web(['email' => 'x', 'doc_numero' => '123', 'aceite' => ''] + $validWeb));
+    eq(false, $bad['ok']);
+    eq(['aceite', 'doc_numero', 'email'], (function () use ($bad) { $k = array_keys($bad['errors']); sort($k); return $k; })());
+    $bot = $e['checkout']->registerFromWeb($web(['website' => 'http://spam'] + $validWeb));
+    eq(false, $bot['ok']);
+    eq([0, []], [count($e['store']->checkouts), $e['whmcs']->calls], 'nothing created');
+});
+test('a password is not required, and one that is sent is ignored', function () use ($web, $validWeb) {
+    $e = make();
+    eq(true, $e['checkout']->registerFromWeb($web(['senha' => 'x'] + $validWeb))['ok']);
+    yes($e['whmcs']->calls[0][1]['password2'] !== 'x', 'the typed value is not used');
+});
+test('existing e-mail: no order is attached to that account; the WHMCS link is offered to continue', function () use ($web, $validWeb) {
+    $e = make();
+    $e['whmcs']->clients['maria@example.com'] = 42;
+    $r = $e['checkout']->registerFromWeb($web($validWeb));
+    eq(false, $r['ok']);
+    yes(isset($r['errors']['email']) && str_contains($r['errors']['email'], 'Entre na sua conta'), 'message');
+    yes(is_string($r['fallback_url']) && str_starts_with($r['fallback_url'], 'https://app.test/index.php?m=waycloud_ai&t='), 'link to continue on WHMCS');
+    eq(0, count(array_filter($e['whmcs']->calls, fn ($c) => in_array($c[0], ['addClient', 'addOrder', 'reset'], true))), 'no client, order or e-mail');
+});
+test('rejects an unknown plan or cycle before creating anything', function () use ($web, $validWeb) {
+    $e = make();
+    foreach ([$web($validWeb, 1), $web($validWeb, 173, 'weekly')] as $req) {
+        try {
+            $e['checkout']->registerFromWeb($req);
+            throw new RuntimeException('should have been refused');
+        } catch (WayCloud\Ai\ApiException $x) {
+            yes(in_array($x->errorCode, ['invalid_plan', 'invalid_cycle'], true), 'refused');
+        }
+    }
+    eq([], $e['whmcs']->calls);
+});
+test('privacy: no e-mail, CPF, phone or name in webhooks or logs', function () use ($web, $validWeb) {
+    $e = make();
+    $e['checkout']->registerFromWeb($web($validWeb));
+    $dump = json_encode([$e['posted']->calls, $e['store']->outbox, $e['store']->log]);
+    foreach (['maria@example.com', '529.982.247-25', '52998224725', '99999-8888', '999998888', 'Maria'] as $secret) {
+        yes(!str_contains($dump, $secret), "leaked: $secret");
+    }
+});
+test('API action register_checkout is signed like the others and answers with the result', function () use ($call, $web, $validWeb) {
+    $e = make();
+    [$s, $r] = $call($e, ['action' => 'register_checkout'] + $web($validWeb));
+    eq([200, true, 'https://app.test/sso/abc'], [$s, $r['ok'], $r['redirect']]);
+    [$s2, $r2] = $call($e, ['action' => 'register_checkout'] + $web($validWeb, 173, 'nope'));
+    eq([422, ['error' => 'invalid_cycle']], [$s2, $r2]);
+});
+
+echo "\nInvoice page banner\n";
+test('AI invoices get the way back; paid ones also redirect; other invoices and pages get nothing', function () use ($web, $validWeb) {
+    $e = make();
+    $e['checkout']->registerFromWeb($web($validWeb)); // invoice 1500
+    $open = $e['checkout']->invoiceBanner(['filename' => 'viewinvoice', 'invoiceid' => 1500, 'status' => 'Unpaid']);
+    yes(str_contains($open, 'Voltar para a Way Cloud') && str_contains($open, 'href="https://waypreview.com.br"'), 'link back');
+    yes(!str_contains($open, 'setTimeout'), 'no redirect before payment');
+    $paid = $e['checkout']->invoiceBanner(['filename' => 'viewinvoice', 'invoiceid' => 1500, 'status' => 'Paid']);
+    yes(str_contains($paid, "location.href='https://waypreview.com.br'"), 'redirect once paid');
+    eq('', $e['checkout']->invoiceBanner(['filename' => 'viewinvoice', 'invoiceid' => 999, 'status' => 'Unpaid']), 'not an AI invoice');
+    eq('', $e['checkout']->invoiceBanner(['filename' => 'clientarea', 'invoiceid' => 1500]), 'other page');
+    yes(!str_contains($open . $paid, 'maria@'), 'no personal data in the banner');
+});
+
 echo "\n" . ($total - $failures) . "/$total passed\n";
 exit($failures === 0 ? 0 : 1);

@@ -12,6 +12,7 @@ final class Settings
         'terms_url' => 'https://waycloud.com.br/termos-de-servicos/',
         'privacy_url' => 'https://waycloud.com.br/politica-de-privacidade/',
         'alert_email' => 'contato@waycloud.com.br',
+        'public_url' => 'https://waypreview.com.br',
         // Quick sign-up has no address: these fill WHMCS's required fields; the customer completes them later.
         'default_address1' => 'Não informado',
         'default_city' => 'Não informado',

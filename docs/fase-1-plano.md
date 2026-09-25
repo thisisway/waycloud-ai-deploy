@@ -303,3 +303,13 @@ Para quem usa uma IA sem MCP nem comandos (ChatGPT, Claude.ai, Lovable...): a IA
 - CSP restrita (`script-src 'self'`, sem estilos nem scripts inline, sem recursos externos), verificada por teste; o código da página não usa `innerHTML`.
 - `listar_planos` passou a devolver `tipos` (tipos de projeto que o plano atende) para a página não oferecer plano estático a um site PHP.
 - Endereço público: o Worker do Cloudflare também atende o domínio raiz (`waypreview.com.br/*`), que o serviço trata como o site (página, `/mcp`, `/llms`), e não como prévia.
+
+## 17. Cadastro dentro da página (versão 0.4.0 do addon)
+
+O cliente não sai mais do `waypreview.com.br` para se cadastrar: a etapa "Seus dados" (nome, e-mail, CPF/CNPJ, telefone, aceite dos termos) faz parte da página. Só o pagamento (Pix ou cartão) continua na fatura do WHMCS, por segurança (cartão) e porque as renovações dependem do módulo de gateway.
+
+- `POST /web/checkout` no serviço (mesma origem): valida a sessão e o plano, limita tentativas (por IP, por sessão e no total) e repassa o formulário ao addon, assinado com HMAC, na ação `register_checkout`. O serviço não guarda, não registra e não devolve dados pessoais; o teste confere todas as tabelas. O IP vem de `X-Real-IP` (o Worker do Cloudflare pode enviá-lo: `proxied.headers.set("X-Real-IP", request.headers.get("cf-connecting-ip"))`).
+- Addon: `Checkout::registerFromWeb`. Mesmo fluxo do link do WHMCS (cliente, pedido, fatura, SSO), mas **sem senha**: o cliente é criado com uma senha aleatória e o addon pede ao WHMCS o e-mail para ele definir a sua (`ResetPassword`). Cliente que já existe recebe a orientação de entrar na conta e o link da página do WHMCS para continuar.
+- Depois de pagar, a fatura mostra "Voltar para a Way Cloud" (e volta sozinha quando está paga). A página retoma de onde parou (o estado da compra fica no `localStorage`, os dados pessoais nunca) e publica assim que o pedido fica ativo.
+- Endereços devolvidos pelo addon (`redirect`, `fallback_url`) precisam estar no mesmo host do WHMCS, senão o serviço recusa.
+- Limites conhecidos: os limites de tentativas ficam em memória (zeram ao reiniciar); um desafio anti-robô (Cloudflare Turnstile) é o próximo passo se aparecer cadastro falso.

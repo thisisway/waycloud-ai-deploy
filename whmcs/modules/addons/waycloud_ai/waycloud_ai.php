@@ -18,7 +18,7 @@ function waycloud_ai_config(): array
     return [
         'name' => 'Way Cloud AI Deploy',
         'description' => 'Contratação rápida de hospedagem para sites publicados por assistentes de IA (MCP).',
-        'version' => '0.3.3',
+        'version' => '0.4.0',
         'author' => 'Way Cloud',
         'language' => 'portuguese-br',
         'fields' => [
@@ -29,6 +29,7 @@ function waycloud_ai_config(): array
             'checkout_ttl_hours' => ['FriendlyName' => 'Validade do link (horas)', 'Type' => 'text', 'Size' => '5', 'Default' => '48'],
             'terms_url' => ['FriendlyName' => 'URL dos Termos de Serviço', 'Type' => 'text', 'Size' => '60', 'Default' => 'https://waycloud.com.br/termos-de-servicos/'],
             'privacy_url' => ['FriendlyName' => 'URL da Política de Privacidade', 'Type' => 'text', 'Size' => '60', 'Default' => 'https://waycloud.com.br/politica-de-privacidade/'],
+            'public_url' => ['FriendlyName' => 'Endereço público do site', 'Type' => 'text', 'Size' => '40', 'Default' => 'https://waypreview.com.br', 'Description' => 'Onde o cliente volta depois de pagar a fatura (sem barra no final).'],
             'alert_email' => ['FriendlyName' => 'E-mail de alertas', 'Type' => 'text', 'Size' => '40', 'Default' => 'contato@waycloud.com.br', 'Description' => 'Recebe avisos de falha de cadastro, pedido ou provisionamento.'],
             'default_address1' => ['FriendlyName' => 'Endereço padrão', 'Type' => 'text', 'Size' => '40', 'Default' => 'Não informado', 'Description' => 'O cadastro rápido não pede endereço; estes valores preenchem os campos obrigatórios do WHMCS.'],
             'default_city' => ['FriendlyName' => 'Cidade padrão', 'Type' => 'text', 'Size' => '30', 'Default' => 'Não informado'],

@@ -89,11 +89,53 @@
           <p class="note soft"><svg class="ic sm"><use href="#i-lock"/></svg>Cadastro e pagamento (Pix ou cartão) em uma página segura da Way Cloud. Não pedimos dados de pagamento aqui.</p>
         </section>
 
+        <section id="s-signup" class="block" hidden>
+          <div class="row">
+            <h2>Seus dados</h2>
+            <button type="button" id="change-plan" class="text-btn">Trocar plano</button>
+          </div>
+          <p id="signup-plan" class="summary"></p>
+          <form id="signup" novalidate>
+            <div class="field">
+              <label for="f-nome">Nome completo</label>
+              <input id="f-nome" name="nome" type="text" autocomplete="name" maxlength="100" aria-describedby="e-nome" required>
+              <p id="e-nome" class="err" hidden></p>
+            </div>
+            <div class="field">
+              <label for="f-email">E-mail</label>
+              <input id="f-email" name="email" type="email" autocomplete="email" inputmode="email" maxlength="254" placeholder="voce@empresa.com" aria-describedby="e-email" required>
+              <p id="e-email" class="err" hidden></p>
+            </div>
+            <div class="field">
+              <label for="f-doc">CPF ou CNPJ</label>
+              <div class="pair">
+                <select id="f-tipo" name="doc_tipo" aria-label="Tipo de documento"><option value="CPF">CPF</option><option value="CNPJ">CNPJ</option></select>
+                <input id="f-doc" name="doc_numero" type="text" autocomplete="off" inputmode="numeric" maxlength="18" placeholder="000.000.000-00" aria-describedby="e-doc" required>
+              </div>
+              <p id="e-doc" class="err" hidden></p>
+            </div>
+            <div class="field">
+              <label for="f-tel">Telefone / WhatsApp</label>
+              <input id="f-tel" name="telefone" type="tel" autocomplete="tel-national" inputmode="tel" maxlength="16" placeholder="(11) 99999-8888" aria-describedby="e-tel" required>
+              <p id="e-tel" class="err" hidden></p>
+            </div>
+            <div class="hp" aria-hidden="true"><label>Não preencha este campo<input name="website" type="text" tabindex="-1" autocomplete="off"></label></div>
+            <div class="field check">
+              <label class="cb"><input id="f-aceite" name="aceite" type="checkbox" aria-describedby="e-aceite"><span>Li e aceito os <a href="https://waycloud.com.br/termos-de-servicos/" target="_blank" rel="noopener noreferrer">Termos de Serviço</a> e a <a href="https://waycloud.com.br/politica-de-privacidade/" target="_blank" rel="noopener noreferrer">Política de Privacidade</a>.</span></label>
+              <p id="e-aceite" class="err" hidden></p>
+            </div>
+            <p id="e-form" class="err" hidden></p>
+            <p id="signup-fallback" class="note" hidden>Você já tem cadastro? <a id="fallback-link" href="#">Continue com a sua conta</a>.</p>
+            <button id="signup-submit" type="submit" class="btn wide">Continuar para o pagamento</button>
+          </form>
+          <p class="note soft"><svg class="ic sm"><use href="#i-lock"/></svg>Não pedimos senha: você recebe um e-mail para definir a sua depois. Seus dados vão direto para a Way Cloud e não ficam guardados neste navegador.</p>
+        </section>
+
         <section id="s-wait" class="block" hidden>
           <h2>Aguardando o pagamento</h2>
-          <p id="wait-msg" class="sub">Abrimos a página de pagamento em outra aba. Assim que for confirmado, a publicação começa sozinha.</p>
+          <p id="wait-msg" class="sub">Se você ainda não pagou, siga para o pagamento (Pix ou cartão). Depois é só voltar a esta página: a publicação começa sozinha assim que for confirmado.</p>
           <div class="bar-load" aria-hidden="true"><span></span></div>
-          <p><a id="checkout-link" class="link-out" target="_blank" rel="noopener noreferrer"><span>Abrir a página de pagamento</span><svg class="ic"><use href="#i-external"/></svg></a></p>
+          <p><a id="checkout-link" class="btn line">Ir para o pagamento</a></p>
         </section>
 
         <section id="s-deploy" class="block" hidden>

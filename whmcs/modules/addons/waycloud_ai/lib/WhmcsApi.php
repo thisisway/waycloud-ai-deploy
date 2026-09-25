@@ -19,6 +19,9 @@ interface WhmcsApi
     /** @return array{orderid:int, invoiceid:int, serviceid:int} @throws WhmcsApiError */
     public function addOrder(int $clientId, int $pid, string $cycle, string $domain, string $paymentMethod): array;
 
+    /** Sends the customer the "define your password" e-mail. @throws WhmcsApiError */
+    public function sendPasswordReset(string $email): void;
+
     /** Logged-in URL for the client, landing on $path (e.g. "viewinvoice.php?id=10"). */
     public function createSsoUrl(int $clientId, string $path): ?string;
 

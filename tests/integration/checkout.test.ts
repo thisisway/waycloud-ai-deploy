@@ -25,6 +25,9 @@ beforeAll(async () => {
       return behavior();
     },
     plans: async () => [],
+    registerCheckout: async () => {
+      throw new Error("unused");
+    },
   };
   ctx = { ...t.ctx, addon };
 });

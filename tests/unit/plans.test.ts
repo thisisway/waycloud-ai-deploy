@@ -9,7 +9,7 @@ const wire: AddonPlan[] = [
 
 function setup(behavior: () => Promise<AddonPlan[]>) {
   const state = { calls: 0, t: 1_000_000, behavior };
-  const addon = { plans: () => (state.calls++, state.behavior()), createCheckout: async () => { throw new Error("unused"); } } as AddonClient;
+  const addon = { plans: () => (state.calls++, state.behavior()), createCheckout: async () => { throw new Error("unused"); }, registerCheckout: async () => { throw new Error("unused"); } } as AddonClient;
   const provider = planCatalog({ addon, ttlMs: 60_000, now: () => state.t });
   return { state, provider };
 }

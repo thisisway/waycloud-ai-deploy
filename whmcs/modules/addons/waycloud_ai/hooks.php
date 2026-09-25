@@ -37,6 +37,15 @@ add_hook('AfterModuleCreateFailed', 1, static function (array $vars) use ($waycl
     $waycloudGuard('AfterModuleCreateFailed', static fn () => Container::checkout()->onModuleCreateFailed((int) ($p['serviceid'] ?? 0), (string) ($vars['failureResponseMessage'] ?? 'unknown')));
 });
 
+// The invoice page of an AI checkout gets a way back to the public site (which keeps following the order).
+add_hook('ClientAreaFooterOutput', 1, static function (array $vars) use ($waycloudGuard): string {
+    $html = '';
+    $waycloudGuard('ClientAreaFooterOutput', static function () use ($vars, &$html): void {
+        $html = Container::checkout()->invoiceBanner($vars);
+    });
+    return $html;
+});
+
 // WHMCS runs its cron every few minutes: retry webhooks that could not be delivered.
 add_hook('AfterCronJob', 1, static function () use ($waycloudGuard): void {
     $waycloudGuard('AfterCronJob', static fn () => Container::notifier()->flush(50));
