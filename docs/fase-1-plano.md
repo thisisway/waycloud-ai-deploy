@@ -267,3 +267,13 @@ O serviço #1011 foi mantido ativo para testar o deploy do M5; cancelar ao final
 3. O Easypanel classifica `updateAppEnv` e `deployAppService` como destrutivos; o env foi enviado completo.
 
 **Pendente**: instalar o agente no Plesk (exige root, com você presente) e validar de verdade: servidor web real (Apache, nginx ou LiteSpeed), `plesk bin site --update` para PHP, comando do Let's Encrypt, comportamento do `.htaccess` do SPA e permissões do `httpdocs` do Plesk.
+
+
+---
+
+## 14. Troca de domínio e segunda compra de teste (2026-09-25)
+
+- Domínio de prévias e dos sites provisórios: **`waypreview.com.br`** (antes `wayleads.com.br`). Prévias: `<slug>.waypreview.com.br`; sites pagos: `<slug>.sites.waypreview.com.br`. O valor salvo no WHMCS (`sites_domain`) foi atualizado à mão, porque o padrão do código não altera o que já foi gravado; addon 0.3.3.
+- DNS na Cloudflare: `*.waypreview.com.br` -> 177.11.55.72 (proxy ligado, prévias) e **`*.sites`** -> 177.11.55.71 (**somente DNS**, sites pagos e Let's Encrypt). Um registro chamado `sites` (sem o asterisco) não cobre os nomes abaixo dele: o wildcard `*` deixa de valer sob um nome que existe.
+- Segunda compra de teste feita pelo caminho real do checkout (cliente #750 já logado, sem navegador): pedido 1149, fatura #8079, serviço **#1014** (`wncr7fhrhl.sites.waypreview.com.br`). Publicado pelo agente em 15 s. O serviço antigo **#1011 foi encerrado** (`ModuleTerminate`, com travas). As faturas #8073 e #8079 seguem como pagas (teste) no WHMCS.
+- Achado: em PowerShell 5.1, canalizar `byte[]` para um comando externo envia cada byte como uma linha; canalizar a string funciona.
