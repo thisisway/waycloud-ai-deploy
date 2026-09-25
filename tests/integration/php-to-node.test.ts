@@ -54,7 +54,7 @@ describe.skipIf(!enabled)("PHP addon -> Node webhook receiver (real code both si
     expect(order).toEqual({ status: "active", whmcs_order_id: 500, whmcs_invoice_id: 1500, whmcs_service_id: 2500, plan_pid: 173, cycle: "monthly" });
     const [sub] = await db.query<{ domain: string; server_id: string }>("SELECT domain, server_id FROM subscriptions WHERE session_id = $1", [uuid]);
     expect(sub!.server_id).toBe("whmcs-18");
-    expect(sub!.domain).toMatch(/^[a-z2-7]{10}\.sites\.wayleads\.com\.br$/);
+    expect(sub!.domain).toMatch(/^[a-z2-7]{10}\.sites\.waypreview\.com\.br$/);
     const actions = (await db.query<{ action: string }>("SELECT action FROM audit_log WHERE correlation_id = $1 ORDER BY id", [uuid])).map((a) => a.action);
     expect(actions).toEqual(["order.created", "order.paid", "service.active"]);
   }, 90_000);

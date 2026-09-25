@@ -18,14 +18,14 @@ function waycloud_ai_config(): array
     return [
         'name' => 'Way Cloud AI Deploy',
         'description' => 'Contratação rápida de hospedagem para sites publicados por assistentes de IA (MCP).',
-        'version' => '0.3.2',
+        'version' => '0.3.3',
         'author' => 'Way Cloud',
         'language' => 'portuguese-br',
         'fields' => [
             'mcp_url' => ['FriendlyName' => 'URL do serviço MCP', 'Type' => 'text', 'Size' => '60', 'Default' => 'https://mcp.waycloud.com.br', 'Description' => 'Sem barra no final.'],
             'hmac_secret' => ['FriendlyName' => 'Segredo HMAC', 'Type' => 'text', 'Size' => '70', 'Description' => 'Mínimo de 32 caracteres. Deve ser igual ao ADDON_HMAC_SECRET do serviço MCP.'],
             'default_payment' => ['FriendlyName' => 'Forma de pagamento padrão', 'Type' => 'text', 'Size' => '20', 'Default' => 'efipix', 'Description' => 'Módulo do gateway (Pix). O cliente pode trocar por cartão na fatura.'],
-            'sites_domain' => ['FriendlyName' => 'Domínio provisório dos sites', 'Type' => 'text', 'Size' => '40', 'Default' => 'sites.wayleads.com.br', 'Description' => 'Cada compra recebe um subdomínio deste domínio até o cliente apontar o dele.'],
+            'sites_domain' => ['FriendlyName' => 'Domínio provisório dos sites', 'Type' => 'text', 'Size' => '40', 'Default' => 'sites.waypreview.com.br', 'Description' => 'Cada compra recebe um subdomínio deste domínio até o cliente apontar o dele.'],
             'checkout_ttl_hours' => ['FriendlyName' => 'Validade do link (horas)', 'Type' => 'text', 'Size' => '5', 'Default' => '48'],
             'terms_url' => ['FriendlyName' => 'URL dos Termos de Serviço', 'Type' => 'text', 'Size' => '60', 'Default' => 'https://waycloud.com.br/termos-de-servicos/'],
             'privacy_url' => ['FriendlyName' => 'URL da Política de Privacidade', 'Type' => 'text', 'Size' => '60', 'Default' => 'https://waycloud.com.br/politica-de-privacidade/'],

@@ -142,7 +142,7 @@ test('creates a link, stores only the token hash, cancels the previous open link
     $row = $e['store']->checkouts[2];
     eq(hash('sha256', $second), $row['token_hash']);
     yes(!str_contains(json_encode($e['store']->checkouts), $second), 'plain token never stored');
-    yes((bool) preg_match('/^[a-z2-7]{10}\.sites\.wayleads\.com\.br$/', $row['domain']), 'provisional domain ' . $row['domain']);
+    yes((bool) preg_match('/^[a-z2-7]{10}\.sites\.waypreview\.com\.br$/', $row['domain']), 'provisional domain ' . $row['domain']);
     eq(1_700_000_000 + 48 * 3600, $row['expires_at'], 'default 48h expiry');
 });
 test('rejects bad session, plan and cycle', function () {
@@ -197,7 +197,7 @@ test('happy path: client, order, SSO redirect and ids-only webhook payload', fun
 
     [, $order] = $e['whmcs']->calls[1];
     eq(['clientId' => 100, 'pid' => 173, 'cycle' => 'monthly', 'paymentMethod' => 'efipix'], array_intersect_key($order, array_flip(['clientId', 'pid', 'cycle', 'paymentMethod'])));
-    yes((bool) preg_match('/\.sites\.wayleads\.com\.br$/', $order['domain']), 'provisional domain used');
+    yes((bool) preg_match('/\.sites\.waypreview\.com\.br$/', $order['domain']), 'provisional domain used');
     eq(['sso', [100, 'viewinvoice.php?id=1500']], $e['whmcs']->calls[2]);
 
     $c = $e['store']->checkouts[1];

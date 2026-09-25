@@ -3,7 +3,7 @@ import type { S3Config } from "./storage.js";
 
 export interface Settings {
   previewRoot: string; // where preview folders are written (shared volume with the Nginx edge)
-  previewUrlTemplate: string; // e.g. https://{slug}.wayleads.com.br
+  previewUrlTemplate: string; // e.g. https://{slug}.waypreview.com.br
   previewTtlHours: number;
   uploadUrlTtlSeconds: number;
   maxInlineBytes: number;
@@ -13,7 +13,7 @@ export interface Settings {
 
 export const DEFAULT_SETTINGS: Settings = {
   previewRoot: "/srv/previews",
-  previewUrlTemplate: "https://{slug}.wayleads.com.br",
+  previewUrlTemplate: "https://{slug}.waypreview.com.br",
   previewTtlHours: 24,
   uploadUrlTtlSeconds: 15 * 60,
   maxInlineBytes: 5 * 1024 * 1024,

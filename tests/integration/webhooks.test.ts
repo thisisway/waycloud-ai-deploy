@@ -30,7 +30,7 @@ const base = (uuid: string) => ({ session_id: uuid, checkout_id: 7, plan_pid: 22
 const events = {
   created: (uuid: string) => ["order.created", { ...base(uuid), whmcs_order_id: 500, whmcs_invoice_id: 1500, whmcs_service_id: 2500 }] as const,
   paid: (uuid: string) => ["order.paid", { ...base(uuid), whmcs_invoice_id: 1500 }] as const,
-  active: (uuid: string, service = 2500) => ["service.active", { ...base(uuid), whmcs_service_id: service, domain: "abcdefghij.sites.wayleads.com.br", whmcs_server_id: 18 }] as const,
+  active: (uuid: string, service = 2500) => ["service.active", { ...base(uuid), whmcs_service_id: service, domain: "abcdefghij.sites.waypreview.com.br", whmcs_server_id: 18 }] as const,
   failed: (uuid: string) => ["service.failed", { ...base(uuid), whmcs_service_id: 2500, reason_code: "provisioning_failed" }] as const,
 };
 const deliver = (ev: readonly [string, object], id = nextEventId++, secret = SECRET) => {
@@ -67,7 +67,7 @@ describe("status_pedido follows the WHMCS events", () => {
 
     expect(await orderOf(s.uuid)).toEqual({ status: "active", whmcs_order_id: 500, whmcs_invoice_id: 1500, whmcs_service_id: 2500, plan_pid: 223, cycle: "monthly" });
     const [sub] = await db.query("SELECT whmcs_service_id, server_id, domain, plan_pid FROM subscriptions WHERE session_id = $1", [s.uuid]);
-    expect(sub).toEqual({ whmcs_service_id: 2500, server_id: "whmcs-18", domain: "abcdefghij.sites.wayleads.com.br", plan_pid: 223 });
+    expect(sub).toEqual({ whmcs_service_id: 2500, server_id: "whmcs-18", domain: "abcdefghij.sites.waypreview.com.br", plan_pid: 223 });
     expect(await db.query("SELECT 1 FROM servers WHERE id = 'whmcs-18'")).toHaveLength(1);
     expect((await db.query("SELECT 1 FROM audit_log WHERE correlation_id = $1", [s.uuid])).length).toBe(3);
   });

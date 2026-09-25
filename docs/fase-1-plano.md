@@ -10,8 +10,8 @@ Escopo do prompt: sites estáticos, SPAs com build e PHP simples; as 11 ferramen
 
 | Tema | Fase 0 | Fase 1 | Por quê |
 |---|---|---|---|
-| **Domínio de prévias** | `*.preview.wayleads.com.br` | **`<slug>.wayleads.com.br`** (um nível) | O wildcard universal e gratuito da Cloudflare cobre `*.wayleads.com.br`, e não `*.preview.…`. Some a emissão por DNS-01. O domínio agora é exclusivo de prévias, então o risco de cookies (R15) cai. 🔶 wildcard com proxy no plano da sua conta |
-| **Domínio provisório dos sites pagos** | não tratado | **`<slug>.sites.wayleads.com.br`** (DNS-only → 177.11.55.71) | O produto Plesk exige um domínio ao criar a assinatura, e o cliente ainda não tem um. Depois ele troca pelo domínio próprio (Fase 2) |
+| **Domínio de prévias** | `*.preview.waypreview.com.br` | **`<slug>.waypreview.com.br`** (um nível) | O wildcard universal e gratuito da Cloudflare cobre `*.waypreview.com.br`, e não `*.preview.…`. Some a emissão por DNS-01. O domínio agora é exclusivo de prévias, então o risco de cookies (R15) cai. 🔶 wildcard com proxy no plano da sua conta |
+| **Domínio provisório dos sites pagos** | não tratado | **`<slug>.sites.waypreview.com.br`** (DNS-only → 177.11.55.71) | O produto Plesk exige um domínio ao criar a assinatura, e o cliente ainda não tem um. Depois ele troca pelo domínio próprio (Fase 2) |
 | **Chave de API do Plesk** | mcp-service guardava | **Não existe no mcp-service.** Só o agente, local no servidor, roda `plesk bin` | Menos segredos e menos superfície. A assinatura é criada pelo módulo Plesk do WHMCS |
 | **Chave de API do WHMCS** | mcp-service usava a API externa | **Não existe no mcp-service.** Só HMAC com o addon; o addon usa `localAPI` | Um vazamento do serviço MCP não dá acesso ao WHMCS |
 | **Armazenamento** | MinIO | **Cloudflare R2** (bucket novo) em produção; MinIO só no `docker-compose` de dev | Você já usa R2 |
@@ -79,7 +79,7 @@ Ferramentas de admin do MVP no addon: mapa tipo→produto, limites, chaves HMAC,
 | Marco | Entrega | Precisa de você |
 |---|---|---|
 | **M1** | shared + banco + detecção + varredura + esqueleto das ferramentas, com testes | nada |
-| **M2** | Upload (R2) + prévia (Nginx) + expiração; `docker-compose` de dev | bucket R2 novo, DNS `*.wayleads.com.br` |
+| **M2** | Upload (R2) + prévia (Nginx) + expiração; `docker-compose` de dev | bucket R2 novo, DNS `*.waypreview.com.br` |
 | **M3** | Addon WHMCS: config, tabelas, checkout, HMAC, hooks | subir o addon no WHMCS; produto oculto de teste |
 | **M4** | Ponte pedido/pagamento/provisionamento + `status_pedido` | teste real de Pix (Efí) no produto oculto |
 | **M5** | Agente + `publicar`, `status_deploy`, `verificar_site`, rollback | instalar o agente no Plesk (root) |
@@ -104,14 +104,14 @@ Ferramentas de admin do MVP no addon: mapa tipo→produto, limites, chaves HMAC,
 ## 6. O que preciso de você para a Fase 1
 
 **Decisões (respondo com padrão se você disser "use o seu")**
-1. **Domínios**: confirma `<slug>.wayleads.com.br` (prévias) e `<slug>.sites.wayleads.com.br` (site pago provisório)? Os registros antigos do wayleads.com.br (A, MX, www, SPF) precisam ser removidos por você quando formos ao ar.
+1. **Domínios**: confirma `<slug>.waypreview.com.br` (prévias) e `<slug>.sites.waypreview.com.br` (site pago provisório)? Os registros antigos do waypreview.com.br (A, MX, www, SPF) precisam ser removidos por você quando formos ao ar.
 2. **CPF/CNPJ no WHMCS**: onde ele fica hoje (campo personalizado de cliente? qual o nome/ID?) e quais campos de endereço são obrigatórios? A Efí e a Iugu exigem endereço/CEP para Pix/cartão? O cadastro rápido só tem nome, e-mail, CPF/CNPJ, telefone e senha; endereço teria que ser opcional ou preenchido com valor padrão.
 3. **Termos**: URLs de Termos de Uso e Política de Privacidade da Way Cloud (para o consentimento LGPD no checkout).
 4. **Alertas ao admin**: e-mail para falha de provisionamento/deploy (qual endereço)?
 5. **Mapa de planos**: estático/SPA → Speed BR (pid 173); PHP simples → Boost BR (174). WordPress e Node ficam fora do MVP. Confirma?
 
 **Ações suas, no tempo de cada marco**
-- M2: criar um bucket R2 novo (`waycloud-ai`) e uma chave só dele; criar o registro DNS `*.wayleads.com.br` (proxied) e um token da Cloudflare de DNS somente dessa zona, se optarmos por automatizar.
+- M2: criar um bucket R2 novo (`waycloud-ai`) e uma chave só dele; criar o registro DNS `*.waypreview.com.br` (proxied) e um token da Cloudflare de DNS somente dessa zona, se optarmos por automatizar.
 - M3: **duplicar** o Speed BR como produto **oculto** ("AI Deploy - Speed") e criar um produto de teste barato; **subir o addon** por zip no cPanel do WHMCS (eu entrego o zip, sem precisar de acesso ao servidor).
 - M5: rodar o instalador do agente como root no Plesk (você lê o script antes).
 
@@ -125,7 +125,7 @@ Ferramentas de admin do MVP no addon: mapa tipo→produto, limites, chaves HMAC,
 - **CPF/CNPJ no WHMCS**: dois campos personalizados de cliente: **"Tipo de documento"** (lista `CPF,CNPJ`, exibido no pedido) e **"CPF/CNPJ"** (texto, obrigatório, exibido na fatura). O addon localiza os IDs **pelo nome** em tempo de execução (`tblcustomfields`), sem IDs fixos no código. 🔶 campos de endereço obrigatórios do WHMCS ainda a confirmar no M3.
 - **Termos**: https://waycloud.com.br/termos-de-servicos/ e https://waycloud.com.br/politica-de-privacidade/
 - **Alertas ao admin**: contato@waycloud.com.br
-- **Mapa de planos e domínios**: padrão do plano (estático/SPA → pid 173; PHP simples → pid 174; `<slug>.wayleads.com.br` e `<slug>.sites.wayleads.com.br`).
+- **Mapa de planos e domínios**: padrão do plano (estático/SPA → pid 173; PHP simples → pid 174; `<slug>.waypreview.com.br` e `<slug>.sites.waypreview.com.br`).
 - **Ajuste técnico**: o pacote normalizado que o agente recebe é um **.zip** re-gerado pelo servidor (caminhos validados, sem symlinks), extraído com `unzip`, em vez de .tar.gz. Mesmo efeito de segurança, menos uma dependência.
 
 
@@ -145,7 +145,7 @@ Ferramentas de admin do MVP no addon: mapa tipo→produto, limites, chaves HMAC,
 
 **Limites conhecidos (marcados no código com `ponytail:`)**: varredura por assinaturas (não é antivírus); phishing só bloqueia quando o formulário posta para outro site; preços dos planos vêm de uma semente (o addon passa a fornecer no M3).
 
-**Próximo: M2** — upload (R2), prévia (Nginx estático), expiração e `docker-compose` de dev. Precisa de você: bucket R2 novo com chave própria e o DNS `*.wayleads.com.br`.
+**Próximo: M2** — upload (R2), prévia (Nginx estático), expiração e `docker-compose` de dev. Precisa de você: bucket R2 novo com chave própria e o DNS `*.waypreview.com.br`.
 
 
 ---
@@ -178,7 +178,7 @@ Ferramentas de admin do MVP no addon: mapa tipo→produto, limites, chaves HMAC,
 
 **Entregue**
 - **Addon WHMCS** (`whmcs/modules/addons/waycloud_ai/`, PHP 8.1): configuração, criação idempotente das tabelas (`_activate`/`_upgrade`), painel admin (diagnóstico, mapa de planos, contratações e eventos, sem dados pessoais), página de checkout (mobile-first, validação de CPF e CNPJ em tempo real, incluindo o CNPJ alfanumérico de 2026), API assinada para o serviço MCP, e hooks `InvoicePaid`, `AfterModuleCreate`, `AfterModuleCreateFailed` e `AfterCronJob`.
-- **Fluxo**: link com token de uso único (só o hash é guardado, validade 48 h, um link novo cancela o anterior) → cadastro rápido → `AddClient` (endereço padrão, CPF/CNPJ nos campos personalizados) → `AddOrder` (Pix Efí, domínio provisório `<slug>.sites.wayleads.com.br`) → `CreateSsoToken` para a fatura. Cliente já existente precisa entrar na conta; nunca se anexa pedido a conta alheia. Duplo envio e concorrência criam um único pedido (compare-and-set no banco).
+- **Fluxo**: link com token de uso único (só o hash é guardado, validade 48 h, um link novo cancela o anterior) → cadastro rápido → `AddClient` (endereço padrão, CPF/CNPJ nos campos personalizados) → `AddOrder` (Pix Efí, domínio provisório `<slug>.sites.waypreview.com.br`) → `CreateSsoToken` para a fatura. Cliente já existente precisa entrar na conta; nunca se anexa pedido a conta alheia. Duplo envio e concorrência criam um único pedido (compare-and-set no banco).
 - **Webhooks para o MCP**: fila (outbox) com HMAC-SHA256 + timestamp + nonce e reenvio com backoff pelo cron do WHMCS. Payloads só com IDs, nunca e-mail, CPF, telefone ou senha (há teste para isso).
 - **Serviço MCP**: `criar_checkout` (ferramenta 4 de 11 completas na Fase 1), cliente assinado do addon (recusa link fora do host do WHMCS), `ADDON_URL`/`ADDON_HMAC_SECRET`.
 - **Ferramentas**: `pnpm build:addon` (zip), `pnpm checkout:dev` (gera link de teste sem o MCP), `pnpm test:php`.
@@ -235,7 +235,7 @@ Ferramentas de admin do MVP no addon: mapa tipo→produto, limites, chaves HMAC,
 
 **Ainda por fazer**
 - Compra real de teste (link -> cadastro -> fatura -> pagamento -> `ativo`).
-- Prévias em produção: o Nginx da prévia depende de volume compartilhado, e o Easypanel não garante a permissão de escrita para o usuário do serviço. Proposta: o próprio serviço servir a prévia pelo `Host` (`<slug>.wayleads.com.br`), recriando a pasta a partir do pacote no R2 quando ela sumir num redeploy. Depende do DNS `*.wayleads.com.br`.
+- Prévias em produção: o Nginx da prévia depende de volume compartilhado, e o Easypanel não garante a permissão de escrita para o usuário do serviço. Proposta: o próprio serviço servir a prévia pelo `Host` (`<slug>.waypreview.com.br`), recriando a pasta a partir do pacote no R2 quando ela sumir num redeploy. Depende do DNS `*.waypreview.com.br`.
 
 
 **Compra de teste em produção (2026-09-24), ciclo completo validado**

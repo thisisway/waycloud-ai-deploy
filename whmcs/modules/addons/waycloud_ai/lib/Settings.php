@@ -7,7 +7,7 @@ final class Settings
 {
     private const DEFAULTS = [
         'default_payment' => 'efipix',
-        'sites_domain' => 'sites.wayleads.com.br',
+        'sites_domain' => 'sites.waypreview.com.br',
         'checkout_ttl_hours' => '48',
         'terms_url' => 'https://waycloud.com.br/termos-de-servicos/',
         'privacy_url' => 'https://waycloud.com.br/politica-de-privacidade/',
