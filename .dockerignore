@@ -3,5 +3,6 @@
 .git
 .env
 *.log
-docs
+docs/*
+!docs/llms.txt
 tests

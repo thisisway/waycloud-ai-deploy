@@ -13,8 +13,10 @@ COPY packages/shared packages/shared
 COPY apps/mcp-service apps/mcp-service
 # The deploy agent and its installer are served to enrolled Plesk servers (the repository is private).
 COPY agent agent
+# The guide for AI assistants, served at /llms.txt.
+COPY docs/llms.txt docs/llms.txt
 
-# Previews live on a volume shared with the Nginx edge; created here so the volume inherits node ownership.
+# Previews are served by the service from this folder; created here so a mounted volume inherits node ownership.
 RUN mkdir -p /srv/previews && chown node:node /srv/previews
 USER node
 WORKDIR /app/apps/mcp-service

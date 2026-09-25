@@ -1,3 +1,4 @@
+import { readFileSync } from "node:fs";
 import Fastify from "fastify";
 import { StreamableHTTPServerTransport } from "@modelcontextprotocol/sdk/server/streamableHttp.js";
 import { createMcpServer } from "./mcp/server.js";
@@ -10,6 +11,14 @@ export function buildApp(ctx: ToolContext, opts: { webhookSecret?: string } = {}
   const app = Fastify({ logger: false, bodyLimit: 10 * 1024 * 1024 });
 
   app.get("/healthz", async () => ({ ok: true }));
+
+  // The guide for AI assistants (docs/llms.txt), read once; without the file (e.g. a slim image) the route is simply absent.
+  try {
+    const llms = readFileSync(new URL("../../../docs/llms.txt", import.meta.url), "utf8");
+    app.get("/llms.txt", async (_req, reply) => reply.type("text/plain; charset=utf-8").send(llms));
+  } catch {
+    /* no llms.txt next to the sources */
+  }
 
   // The HMAC covers the exact bytes the addon signed, so this route keeps the body as a raw string.
   // Registered in its own scope: the /mcp route below still gets parsed JSON.

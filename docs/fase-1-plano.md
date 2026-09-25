@@ -82,7 +82,7 @@ Ferramentas de admin do MVP no addon: mapa tipo→produto, limites, chaves HMAC,
 | **M3** | Addon WHMCS: config, tabelas, checkout, HMAC, hooks | subir o addon no WHMCS; produto oculto de teste |
 | **M4** | Ponte pedido/pagamento/provisionamento + `status_pedido` | teste real de Pix (Efí) no produto oculto |
 | **M5** | Agente + `publicar`, `status_deploy`, `verificar_site`, rollback | instalar o agente no Plesk (root) |
-| **M6** | CLI `npx waycloud` + `llms.txt` + README + `.env.example` | — |
+| **M6** | CLI `npx waycloud` + `llms.txt` (também em `/llms.txt`) + README + `.env.example` — concluído; `logs` e `rollback` da CLI ficam para a Fase 2 | publicar a CLI no npm (conta da Way Cloud) |
 | **M7** | E2E completo, endurecimento, checagem dos critérios de aceite | rodada final em produção |
 
 ---
