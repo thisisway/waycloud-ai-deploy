@@ -299,7 +299,7 @@ document.querySelectorAll("[data-copy]").forEach((b) =>
 startRibbons($("ribbons"));
 
 $("mcp-url").textContent = `${location.origin}/mcp`;
-$("cli-prompt").textContent = `Publique este site na Way Cloud. Leia ${location.origin}/llms.txt e siga as instruções.`;
+$("cli-prompt").textContent = `Quero publicar este site na Way Cloud. Leia ${location.origin}/llms.txt e siga as instruções. Se você não conseguir acessar a internet ou rodar comandos, gere o site completo em um único arquivo .zip (com a pasta compilada, sem node_modules nem .env) e me entregue para eu enviar em ${location.origin}.`;
 
 // Resume where the visitor left off (for instance after paying in the other tab).
 try {

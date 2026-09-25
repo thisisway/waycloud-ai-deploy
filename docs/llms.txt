@@ -5,6 +5,10 @@
 Endpoint MCP (Streamable HTTP, sem estado): {{ORIGIN}}/mcp
 Sem OAuth: a sessão é anônima e vai no argumento `sessao_id` de cada ferramenta.
 
+## Se você não tem acesso à internet
+
+Muitos ambientes de chat (por exemplo, o interpretador de código do ChatGPT) bloqueiam a rede e não conseguem chamar as ferramentas, nem rodar `npx waycloud`. Nesse caso não insista: gere o site completo em um único arquivo `.zip` (com a pasta compilada, se houver build; sem `node_modules` nem `.env`), entregue o arquivo ao cliente e peça que ele o envie em {{ORIGIN}}. Lá ele vê a prévia, escolhe o plano, paga e o site é publicado.
+
 ## Regras que valem sempre
 
 - Mostre ao cliente o campo `mensagem_para_usuario` de cada resposta, com as suas palavras se preferir, mas sem mudar o sentido. Siga o `proximo_passo`.
