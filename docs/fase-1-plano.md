@@ -279,9 +279,19 @@ O serviço #1011 foi mantido ativo para testar o deploy do M5; cancelar ao final
 
 ## 15. Prévias em produção (servidas pelo serviço)
 
-O Easypanel só emite certificado curinga com um resolver de DNS (não há um configurado), então o `*.waypreview.com.br` não pode apontar direto para o app. Solução: o Cloudflare (proxy laranja em `*`) reescreve o Host para o domínio do serviço e entrega o original em `X-Preview-Host`:
+O Easypanel só emite certificado curinga com um resolver de DNS (não há um configurado), então o `*.waypreview.com.br` não pode apontar direto para o app. A Origin Rule com troca de Host/SNI é exclusiva do plano Enterprise. Solução, no plano gratuito: um Cloudflare Worker na rota `*.waypreview.com.br/*` (registro `*` com proxy laranja) reescreve o hostname para o domínio do serviço (`web-way-waycloud-ai-mcp.fzd763.easypanel.host`) e guarda o original em `X-Preview-Host`:
 
-1. Rules → Transform Rules → *Modify Request Header*: expressão `ends_with(http.host, ".waypreview.com.br") and not ends_with(http.host, ".sites.waypreview.com.br")`; definir o cabeçalho `X-Preview-Host` = `http.host` (dinâmico).
-2. Rules → Origin Rules: mesma expressão; *Host Header* = `web-way-waycloud-ai-mcp.fzd763.easypanel.host` e *SNI* = o mesmo valor.
+```js
+export default {
+  async fetch(request) {
+    const url = new URL(request.url);
+    const original = url.hostname;
+    url.hostname = "web-way-waycloud-ai-mcp.fzd763.easypanel.host";
+    const proxied = new Request(url, request);
+    proxied.headers.set("X-Preview-Host", original);
+    return fetch(proxied);
+  },
+};
+```
 
-O serviço usa `X-Preview-Host` quando presente (`preview-serve.ts`). Quem forjar o cabeçalho só alcança prévias, que já são públicas por slug.
+O serviço usa `X-Preview-Host` quando presente (`preview-serve.ts`). Quem forjar o cabeçalho só alcança prévias, que já são públicas por slug. `*.sites` continua "DNS only" apontando para o Plesk. Verificado em produção: `https://<slug>.waypreview.com.br` responde 200 com banner e `X-Robots-Tag: noindex`; caminho inexistente responde 404 do serviço. Limite do plano gratuito do Worker: 100 mil requisições por dia.
