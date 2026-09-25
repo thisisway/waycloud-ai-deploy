@@ -64,9 +64,6 @@ a { color: var(--blue-dark); }
 .brand-copy { position: relative; padding: 48px clamp(32px, 6vw, 80px); max-width: 620px; }
 .eyebrow { font-size: 12px; font-weight: 700; letter-spacing: 0.08em; text-transform: uppercase; color: var(--blue); margin-bottom: 14px; }
 h1 { font-size: clamp(28px, 3.1vw, 42px); font-weight: 800; letter-spacing: -0.035em; line-height: 1.08; max-width: 14em; }
-.checks { list-style: none; margin-top: 28px; display: grid; gap: 12px; }
-.checks li { display: flex; align-items: center; gap: 10px; font-size: 15px; font-weight: 600; color: var(--ink-2); }
-.checks .ic { color: var(--blue); width: 16px; height: 16px; stroke-width: 2.4; }
 
 @media (max-width: 1000px) {
   .split { grid-template-columns: minmax(0, 1fr); }
@@ -182,7 +179,7 @@ h2 { font-size: 22px; font-weight: 700; letter-spacing: -0.02em; line-height: 1.
 #deploy-done { margin-top: 18px; }
 
 /* ---- use it from your AI (lives in the brand pane, always visible) ---- */
-.ia { margin-top: 44px; max-width: 460px; }
+.ia { margin-top: 36px; max-width: 460px; }
 .ia h2 { font-size: 17px; }
 .ia .sub { margin: 6px 0 8px; font-size: 13.5px; }
 .use-list > div { padding: 12px 0; border-bottom: 1px solid var(--line); display: grid; gap: 6px; }

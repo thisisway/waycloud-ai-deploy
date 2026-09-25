@@ -15,7 +15,9 @@ export function buildApp(ctx: ToolContext, opts: { webhookSecret?: string } = {}
 
   // The guide for AI assistants (docs/llms.txt), read once; without the file (e.g. a slim image) the route is simply absent.
   try {
-    const llms = readFileSync(new URL("../../../docs/llms.txt", import.meta.url), "utf8");
+    // The public address is the preview domain (https://waypreview.com.br), not the host the platform gave the container.
+    const origin = new URL(ctx.settings.previewUrlTemplate.replace("{slug}.", "")).origin;
+    const llms = readFileSync(new URL("../../../docs/llms.txt", import.meta.url), "utf8").replaceAll("{{ORIGIN}}", origin);
     for (const path of ["/llms.txt", "/llms"]) app.get(path, async (_req, reply) => reply.type("text/plain; charset=utf-8").send(llms));
   } catch {
     /* no llms.txt next to the sources */

@@ -58,6 +58,12 @@ describe("public page", () => {
     for (const f of ["site.js", "flow.js", "ribbons.js"]) expect(readFileSync(`apps/mcp-service/public/${f}`, "utf8"), f).not.toMatch(/innerHTML|outerHTML|insertAdjacentHTML|document\.write|eval\(|new Function/);
   });
 
+  it("llms.txt shows the public address (the preview domain), never a leftover placeholder or platform host", async () => {
+    const text = await (await fetch(base + "/llms.txt")).text();
+    expect(text).toContain("https://preview.test/mcp"); // the test context's preview domain
+    expect(text).not.toMatch(/\{\{ORIGIN\}\}|easypanel/);
+  });
+
   it("/llms is an alias of /llms.txt", async () => {
     expect(await (await fetch(base + "/llms")).text()).toBe(await (await fetch(base + "/llms.txt")).text());
   });
