@@ -13,6 +13,8 @@ const PAGES: Record<string, { file: string; type: string; immutable?: boolean }>
   "/site.css": { file: "site.css", type: "text/css; charset=utf-8" },
   "/site.js": { file: "site.js", type: "text/javascript; charset=utf-8" },
   "/flow.js": { file: "flow.js", type: "text/javascript; charset=utf-8" },
+  "/ribbons.js": { file: "ribbons.js", type: "text/javascript; charset=utf-8" },
+  "/waycloud-logo.svg": { file: "waycloud-logo.svg", type: "image/svg+xml" },
   "/fonts/plus-jakarta-sans-v12-latin.woff2": { file: "fonts/plus-jakarta-sans-v12-latin.woff2", type: "font/woff2", immutable: true }, // self-hosted: no request to Google
 };
 const HEADERS = {

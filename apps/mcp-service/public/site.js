@@ -1,4 +1,5 @@
 import { Api, brl, ensureSession, sendZip } from "./flow.js";
+import { startRibbons } from "./ribbons.js";
 
 const $ = (id) => document.getElementById(id);
 const api = new Api("");
@@ -27,6 +28,7 @@ const save = (patch) => {
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 const MAX_BYTES = 50 * 1024 * 1024;
 const SECTIONS = ["s-upload", "s-preview", "s-plans", "s-wait", "s-deploy"];
+const STEP_NAMES = ["Enviar", "Prévia", "Plano", "No ar"];
 const STAGE_OF = { na_fila: 0, enviando: 1, validando: 2, publicado: 3 };
 let cycle = "mensal";
 let run = 0; // bumped to stop a polling loop that is no longer wanted
@@ -49,11 +51,8 @@ const text = (tag, content, cls) => {
 
 function view(step, ...ids) {
   for (const id of SECTIONS) $(id).hidden = !ids.includes(id);
-  document.querySelectorAll(".how li").forEach((li) => {
-    const n = Number(li.dataset.step);
-    li.classList.toggle("done", n < step);
-    li.classList.toggle("cur", n === step);
-  });
+  $("prog-label").textContent = step > 4 ? "Publicado" : `Etapa ${step} de 4 · ${STEP_NAMES[step - 1]}`;
+  document.querySelectorAll(".segs i").forEach((bar, i) => bar.classList.toggle("on", i < step));
   $("restart").hidden = !state.sessao_id;
 }
 const showAlert = (msg) => {
@@ -64,6 +63,13 @@ const showAlert = (msg) => {
 const clearAlert = () => ($("alert").hidden = true);
 
 // ---- 1. upload + preview ------------------------------------------------------------------
+const fmtSize = (n) => (n >= 1024 * 1024 ? `${(n / 1024 / 1024).toFixed(1).replace(".", ",")} MB` : `${Math.max(1, Math.round(n / 1024))} KB`);
+function fileState(kind, label) {
+  const el = $("file-state");
+  el.className = `fstate ${kind}`;
+  el.textContent = label;
+}
+
 async function handleFile(file) {
   clearAlert();
   if (!file) return;
@@ -71,11 +77,16 @@ async function handleFile(file) {
   if (file.size > MAX_BYTES) return showAlert("O arquivo passou de 50 MB. Envie só a pasta do site, sem node_modules.");
   const status = $("upload-status");
   $("drop").classList.add("busy");
+  $("file-name").textContent = file.name;
+  $("file-size").textContent = fmtSize(file.size);
+  $("files").hidden = false;
+  fileState("load", "Enviando");
   try {
     status.textContent = "Enviando o seu site...";
     state = await ensureSession(api, store);
     const sent = await sendZip(api, state.sessao_id, new Uint8Array(await file.arrayBuffer()));
     if (!sent.ok) throw new Error(sent.mensagem);
+    fileState("ok", "Enviado");
     save({ upload_id: sent.upload_id, deploy_id: null, stage: "upload" });
 
     status.textContent = "Criando a prévia...";
@@ -87,6 +98,7 @@ async function handleFile(file) {
     await showPlans();
   } catch (e) {
     status.textContent = "";
+    fileState("err", "Falhou");
     showAlert(e instanceof Error ? e.message : "Algo deu errado. Tente de novo.");
   } finally {
     $("drop").classList.remove("busy");
@@ -283,6 +295,9 @@ document.querySelectorAll("[data-copy]").forEach((b) =>
     }
   }),
 );
+
+$("open-ia").addEventListener("click", () => ($("ia").open = true));
+startRibbons($("ribbons"));
 
 $("mcp-url").textContent = `${location.origin}/mcp`;
 $("cli-prompt").textContent = `Publique este site na Way Cloud. Leia ${location.origin}/llms.txt e siga as instruções.`;
