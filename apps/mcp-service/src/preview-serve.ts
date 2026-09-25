@@ -131,7 +131,9 @@ export function registerPreviewHost(app: FastifyInstance, ctx: ToolContext) {
 
   // Runs before routing: on a preview host EVERYTHING is a preview request (/mcp, /agent and friends do not exist there).
   app.addHook("onRequest", async (req, reply) => {
-    const host = String(req.headers.host ?? "").split(":")[0]!.toLowerCase();
+    // Behind Cloudflare the Host is rewritten to the service's own domain (Easypanel has no wildcard certificate),
+    // and a transform rule hands over the original one in X-Preview-Host. Someone forging it only reaches public previews.
+    const host = String(req.headers["x-preview-host"] ?? req.headers.host ?? "").split(":")[0]!.toLowerCase();
     if (host !== base && !host.endsWith(`.${base}`)) return;
     const m = slugHost.exec(host);
     await (m ? serve(req, reply, m[1]!) : notFound(reply));

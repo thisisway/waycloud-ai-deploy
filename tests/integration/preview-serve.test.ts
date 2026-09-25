@@ -130,6 +130,13 @@ describe("preview host", () => {
     expect((await get("localhost", "/healthz")).json()).toEqual({ ok: true }); // while the normal host still has them
   });
 
+  it("takes the original host from X-Preview-Host when Cloudflare rewrote Host", async () => {
+    const slug = await preview({ "index.html": "<body>via cf</body>" });
+    const r = await app.inject({ method: "GET", url: "/", headers: { host: "servico.easypanel.host", "x-preview-host": `${slug}.preview.test` } });
+    expect([r.statusCode, r.body.includes("via cf")]).toEqual([200, true]);
+    expect((await app.inject({ method: "GET", url: "/mcp", headers: { host: "servico.easypanel.host", "x-preview-host": `${slug}.preview.test` } })).statusCode).toBe(404);
+  });
+
   it("rebuilds the folder from the stored package after a redeploy wiped the disk (and only once for concurrent requests)", async () => {
     const slug = await preview({ "index.html": "<body>voltei</body>", "css/a.css": "b{}" });
     const host = `${slug}.preview.test`;
