@@ -30,7 +30,7 @@ afterAll(async () => {
 
 describe("public page", () => {
   it("serves the page and its assets with a strict CSP", async () => {
-    for (const [path, type] of [["/", "text/html"], ["/site.css", "text/css"], ["/site.js", "text/javascript"], ["/flow.js", "text/javascript"]] as const) {
+    for (const [path, type] of [["/", "text/html"], ["/site.css", "text/css"], ["/site.js", "text/javascript"], ["/flow.js", "text/javascript"], ["/fonts/plus-jakarta-sans-v12-latin.woff2", "font/woff2"]] as const) {
       const r = await fetch(base + path);
       expect(r.status, path).toBe(200);
       expect(r.headers.get("content-type"), path).toContain(type);
@@ -48,7 +48,8 @@ describe("public page", () => {
     expect(html).not.toMatch(/\son[a-z]+\s*=/i); // no inline handlers
     expect(html).not.toMatch(/\sstyle\s*=/i); // no inline styles
     expect(html.replace(/mailto:[^"]+/g, "")).not.toMatch(/(src|href)="https?:\/\//i); // nothing loaded from elsewhere
-    expect(css).not.toMatch(/url\(|@import/i);
+    expect(css).not.toMatch(/@import/i);
+    expect([...css.matchAll(/url\(([^)]*)\)/g)].every((m) => m[1]!.startsWith('"/fonts/'))).toBe(true); // only the self-hosted font
   });
 
   it("the page code never builds HTML from strings (no innerHTML / eval)", () => {

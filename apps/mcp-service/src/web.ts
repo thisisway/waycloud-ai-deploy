@@ -8,14 +8,15 @@ import { rawKey } from "./uploads.js";
 // The public page (drop a .zip, see the preview, pick a plan, pay, publish) and the one endpoint it needs
 // besides /mcp: a same-origin upload, so the browser never talks to the object storage (no CORS to manage).
 
-const PAGES: Record<string, { file: string; type: string }> = {
+const PAGES: Record<string, { file: string; type: string; immutable?: boolean }> = {
   "/": { file: "index.html", type: "text/html; charset=utf-8" },
   "/site.css": { file: "site.css", type: "text/css; charset=utf-8" },
   "/site.js": { file: "site.js", type: "text/javascript; charset=utf-8" },
   "/flow.js": { file: "flow.js", type: "text/javascript; charset=utf-8" },
+  "/fonts/plus-jakarta-sans-v12-latin.woff2": { file: "fonts/plus-jakarta-sans-v12-latin.woff2", type: "font/woff2", immutable: true }, // self-hosted: no request to Google
 };
 const HEADERS = {
-  "content-security-policy": "default-src 'none'; script-src 'self'; style-src 'self'; connect-src 'self'; img-src 'self' data:; base-uri 'none'; form-action 'none'; frame-ancestors 'none'",
+  "content-security-policy": "default-src 'none'; script-src 'self'; style-src 'self'; font-src 'self'; connect-src 'self'; img-src 'self' data:; base-uri 'none'; form-action 'none'; frame-ancestors 'none'",
   "x-content-type-options": "nosniff",
   "referrer-policy": "no-referrer",
   "cache-control": "no-cache",
@@ -24,14 +25,14 @@ const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/;
 export const MAX_WEB_ZIP_BYTES = 50 * 1024 * 1024; // same cap as the pre-signed upload
 
 export function registerWeb(app: FastifyInstance, ctx: ToolContext) {
-  for (const [path, { file, type }] of Object.entries(PAGES)) {
+  for (const [path, { file, type, immutable }] of Object.entries(PAGES)) {
     let body: Buffer;
     try {
       body = readFileSync(new URL(`../public/${file}`, import.meta.url));
     } catch {
       continue; // a slim image without the page: the service still works
     }
-    app.get(path, async (_req, reply) => reply.headers({ ...HEADERS, "content-type": type }).send(body));
+    app.get(path, async (_req, reply) => reply.headers({ ...HEADERS, ...(immutable && { "cache-control": "public, max-age=31536000, immutable" }), "content-type": type }).send(body));
   }
 
   void app.register(async (scope) => {

@@ -3,98 +3,176 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>Way Cloud · Publique seu site</title>
-  <meta name="description" content="Arraste o .zip do site que a sua IA criou, veja uma prévia grátis e publique com HTTPS.">
-  <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='8' fill='%230b3d91'/%3E%3Cpath d='M9 21a5 5 0 0 1 1-9.9A6 6 0 0 1 21.5 12 4.5 4.5 0 0 1 22 21z' fill='white'/%3E%3C/svg%3E">
+  <meta name="theme-color" content="#0B1023">
+  <title>Way Cloud · Publique o site que a sua IA criou</title>
+  <meta name="description" content="Arraste o .zip do site criado por IA, veja uma prévia grátis e publique com HTTPS. Pix ou cartão, sem instalar nada.">
+  <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='8' fill='%231D66FF'/%3E%3Cpath d='M9 21a5 5 0 0 1 1-9.9A6 6 0 0 1 21.5 12 4.5 4.5 0 0 1 22 21z' fill='white'/%3E%3C/svg%3E">
+  <link rel="preload" href="/fonts/plus-jakarta-sans-v12-latin.woff2" as="font" type="font/woff2" crossorigin>
   <link rel="stylesheet" href="/site.css">
 </head>
 <body>
-  <header class="top">
-    <div class="wrap"><strong class="brand">Way Cloud</strong><span class="tag">Publicação de sites criados com IA</span></div>
+  <svg class="sprite" aria-hidden="true" focusable="false">
+    <symbol id="i-upload" viewBox="0 0 24 24"><path d="M7 18a4.6 4.4 0 0 1 0-9 5 4.5 0 0 1 11 2h1a3.5 3.5 0 0 1 0 7h-1"/><path d="M9 15l3-3 3 3"/><path d="M12 12v9"/></symbol>
+    <symbol id="i-check" viewBox="0 0 24 24"><path d="M5 12l5 5L20 7"/></symbol>
+    <symbol id="i-alert" viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M12 8v4"/><path d="M12 16h.01"/></symbol>
+    <symbol id="i-copy" viewBox="0 0 24 24"><rect x="8" y="8" width="12" height="12" rx="2"/><path d="M16 8V6a2 2 0 0 0-2-2H6a2 2 0 0 0-2 2v8a2 2 0 0 0 2 2h2"/></symbol>
+    <symbol id="i-external" viewBox="0 0 24 24"><path d="M12 6H6a2 2 0 0 0-2 2v10a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2v-6"/><path d="M11 13l9-9"/><path d="M15 4h5v5"/></symbol>
+    <symbol id="i-eye" viewBox="0 0 24 24"><circle cx="12" cy="12" r="2"/><path d="M22 12c-2.7 4.7-6 7-10 7s-7.3-2.3-10-7c2.7-4.7 6-7 10-7s7.3 2.3 10 7"/></symbol>
+    <symbol id="i-plug" viewBox="0 0 24 24"><path d="M9.7 8l-1.4 1.4"/><path d="M14.3 12.6L13 14"/><path d="M7 11l6 6-1.7 1.7a4.2 4.2 0 0 1-6-6z"/><path d="M13 7l4 4"/><path d="M15 5l4 4"/><path d="M17.5 3.5l3 3"/></symbol>
+    <symbol id="i-chat" viewBox="0 0 24 24"><path d="M8 9h8"/><path d="M8 13h6"/><path d="M18 4a3 3 0 0 1 3 3v8a3 3 0 0 1-3 3h-5l-5 3v-3H6a3 3 0 0 1-3-3V7a3 3 0 0 1 3-3z"/></symbol>
+    <symbol id="i-doc" viewBox="0 0 24 24"><path d="M14 3v4a1 1 0 0 0 1 1h4"/><path d="M17 21H7a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h7l5 5v11a2 2 0 0 1-2 2z"/><path d="M9 13h6"/><path d="M9 17h6"/></symbol>
+    <symbol id="i-lock" viewBox="0 0 24 24"><rect x="5" y="11" width="14" height="10" rx="2"/><circle cx="12" cy="16" r="1"/><path d="M8 11V7a4 4 0 0 1 8 0v4"/></symbol>
+    <symbol id="i-bolt" viewBox="0 0 24 24"><path d="M13 3v7h6l-8 11v-7H5z"/></symbol>
+    <symbol id="i-card" viewBox="0 0 24 24"><rect x="3" y="5" width="18" height="14" rx="3"/><path d="M3 10h18"/><path d="M7 15h.01"/><path d="M11 15h2"/></symbol>
+  </svg>
+
+  <header class="nav">
+    <div class="wrap nav-in">
+      <a class="brand" href="/" aria-label="Way Cloud, página inicial">
+        <span class="logo"><svg viewBox="0 0 271 178" fill="none" aria-hidden="true" focusable="false"> <path fill-rule="evenodd" clip-rule="evenodd" d="M225.8 53.7l2.5-1c.5-.2.9-.4 1.4-.6l-.9 7.6c0 .3 0 .5.1.8l2.8 6.3c.5 1.1 2.1 1.1 2.6.1l7.4-15.3c.1-.3.1-.7.1-1l-.9-3.5c5.4-2.8 10.6-5.9 15.6-9.3l2-1.4c7.6-5.2 12.2-13.7 12.5-22.9l.2-5.9c.1-3.5-2.6-6.4-6.1-6.5l-6.6-.2C255 .6 246.6 4.2 240.9 10.8l-4.4 5.1c-3.3 3.8-6.4 7.8-9.3 12l-7-1c-.3 0-.6.1-.9.3L205 36c-1 .6-.9 2.2.3 2.6l6.5 2.1c.3.1.5.1.8.1l8-1.8c-.4.6-.7 1.3-1 1.9-1.8 3.4-1.3 7.1.6 9.7l-6.2 6.7c-.9 1 .4 2.4 1.4 1.6l7.8-5.6c2.2 1.3 5 1.6 7.8.5zm24.1-26.7c3.7.4 7.1-2.3 7.4-6 .4-3.7-2.3-7-6.1-7.4-3.7-.4-7 2.3-7.4 6-.4 3.7 2.3 7 6.1 7.4z" fill="white"/> <path d="M149.3 100.7C160.8 87.1 173 74.3 185.9 62.2c-13-11.4-30.1-18.3-48.7-18.3-28 0-52.5 15.5-65.1 38.5-1.6-.2-3.3-.3-5-.3-3.9 10.2-8.9 32.9-10.2 43.8-.1.7 0 1 .1 1.2.2.3.5.6 1 .8s.9.2 1.2.2c.2 0 .6-.1 1-.6l26-29.5 14.9-16.5c6.4-7 15.6-6.4 21.4-2.3 5.7 4.1 9.4 12.5 5 20.8-4 7.8-5.9 16.5-5.2 25.2.2 2.6 3.4 3.6 5 1.6l22.1-26z" fill="white"/> <path d="M236.7 143h-96.3l2.8-2.8 22-26c8.5-10 17.4-19.6 26.7-28.8 3.8-4.1 7-7.6 8.9-9.6 3.6-3.7 9.7-8.8 15-13.1 3.1-2.6 5.8-4.8 7.6-6.4l-18.5 32.6c.5 1.2 1 2.4 1.4 3.6 17.7 6.4 30.3 23.3 30.3 43.2 0 2.4-.2 4.8-.5 7.1v.3z" fill="white"/> <path d="M22.7 113.5c3.6-10.9 11.1-19.9 20.9-25.5-2 7.2-6.7 27.9-7.6 35.3-1 8.3 2.2 15.2 7.3 19.7H1c0-.7 0-1.3 0-2 0-13.4 9.3-24.6 21.7-27.5z" fill="white"/> <path d="M74 143h35.8c-.7-.9-7.8-9.8-8.3-16.4-.4-5.1-.2-10.2.6-15.2l-.2.3-26 29.4C75.3 142 74.6 142.6 74 143z" fill="white"/> </svg></span>
+        <span class="brand-name">waycloud</span>
+      </a>
+      <nav class="nav-links" aria-label="Principal">
+        <a href="/llms.txt">Guia para IAs</a>
+        <a class="nav-cta" href="#ia">Usar na sua IA</a>
+      </nav>
+    </div>
   </header>
 
-  <main class="wrap">
-    <section class="hero">
+  <section class="hero">
+    <div class="wrap">
+      <p class="eyebrow">Publicação com IA</p>
       <h1>Publique o site que a sua IA criou</h1>
-      <p>Arraste o arquivo <strong>.zip</strong> do site, veja uma prévia grátis e, se gostar, publique com HTTPS. Sem instalar nada.</p>
-    </section>
+      <p class="lead">Arraste o arquivo <strong>.zip</strong>, veja uma prévia grátis e coloque no ar com HTTPS. Sem instalar nada.</p>
+      <ul class="pills">
+        <li><svg class="ic"><use href="#i-eye"/></svg>Prévia grátis</li>
+        <li><svg class="ic"><use href="#i-lock"/></svg>HTTPS incluso</li>
+        <li><svg class="ic"><use href="#i-card"/></svg>Pix ou cartão</li>
+        <li><svg class="ic"><use href="#i-bolt"/></svg>No ar em minutos</li>
+      </ul>
+    </div>
+  </section>
 
-    <ol class="steps" aria-label="Etapas">
-      <li data-step="1" class="on">Enviar</li>
-      <li data-step="2">Prévia</li>
-      <li data-step="3">Plano</li>
-      <li data-step="4">No ar</li>
-    </ol>
+  <main class="wrap">
+    <div class="flow">
+      <ol class="stepper" aria-label="Etapas">
+        <li data-step="1" class="cur"><span class="dot">1</span><span class="lbl">Enviar</span></li>
+        <li data-step="2"><span class="dot">2</span><span class="lbl">Prévia</span></li>
+        <li data-step="3"><span class="dot">3</span><span class="lbl">Plano</span></li>
+        <li data-step="4"><span class="dot">4</span><span class="lbl">No ar</span></li>
+      </ol>
 
-    <div id="alert" class="alert" role="alert" aria-live="assertive" hidden></div>
-
-    <section id="s-upload" class="card">
-      <h2>1. Envie o seu site</h2>
-      <label id="drop" class="drop" tabindex="0">
-        <input id="file" type="file" accept=".zip,application/zip" hidden>
-        <span class="drop-title">Arraste o .zip aqui</span>
-        <span class="drop-sub">ou clique para escolher o arquivo (até 50 MB)</span>
-      </label>
-      <p id="upload-status" class="muted" aria-live="polite"></p>
-
-      <details class="help">
-        <summary>Ainda não tenho o .zip</summary>
-        <p>Peça isto à sua IA (ChatGPT, Claude, Lovable, Bolt...) e depois baixe o arquivo:</p>
-        <pre id="prompt-zip">Gere o site completo e me entregue em um único arquivo .zip pronto para publicar. Se ele precisar de build, inclua a pasta compilada (dist, build ou out). Não inclua node_modules nem arquivos .env.</pre>
-        <button type="button" class="btn ghost" data-copy="prompt-zip">Copiar texto</button>
-      </details>
-    </section>
-
-    <section id="s-preview" class="card" hidden>
-      <h2>2. Sua prévia grátis</h2>
-      <p id="preview-msg"></p>
-      <p><a id="preview-link" class="btn" target="_blank" rel="noopener noreferrer" hidden>Abrir a prévia</a></p>
-      <p id="preview-note" class="muted"></p>
-    </section>
-
-    <section id="s-plans" class="card" hidden>
-      <h2>3. Escolha o plano</h2>
-      <div class="cycle" role="group" aria-label="Ciclo de pagamento">
-        <button type="button" class="on" data-cycle="mensal">Mensal</button>
-        <button type="button" data-cycle="anual">Anual</button>
+      <div id="alert" class="wc-alert alert-error" role="alert" aria-live="assertive" hidden>
+        <svg class="ic"><use href="#i-alert"/></svg><p id="alert-text"></p>
       </div>
-      <div id="plans" class="plans"></div>
-      <p class="muted">O cadastro e o pagamento (Pix ou cartão) acontecem em uma página segura da Way Cloud. Não pedimos dados de pagamento aqui.</p>
-    </section>
 
-    <section id="s-wait" class="card" hidden>
-      <h2>Aguardando o pagamento</h2>
-      <p id="wait-msg">Abrimos a página de pagamento em outra aba. Assim que for confirmado, a publicação começa sozinha.</p>
-      <p><a id="checkout-link" class="btn" target="_blank" rel="noopener noreferrer">Abrir a página de pagamento</a></p>
-      <p class="progress" aria-hidden="true"><span></span></p>
-    </section>
+      <section id="s-upload" class="panel">
+        <h2>Envie o seu site</h2>
+        <p class="sub">Um arquivo .zip com o site pronto, de até 50 MB.</p>
+        <label id="drop" class="drop" tabindex="0">
+          <input id="file" type="file" accept=".zip,application/zip" hidden>
+          <span class="drop-icon"><svg class="ic lg"><use href="#i-upload"/></svg></span>
+          <span class="drop-title">Arraste o .zip aqui</span>
+          <span class="drop-sub">ou <u>clique para escolher</u> o arquivo</span>
+        </label>
+        <p id="upload-status" class="status" role="status" aria-live="polite"></p>
 
-    <section id="s-deploy" class="card" hidden>
-      <h2>4. Publicando</h2>
-      <p id="deploy-msg"></p>
-      <p class="progress" id="deploy-bar" aria-hidden="true"><span></span></p>
-      <p id="deploy-done" hidden><a id="site-link" class="btn" target="_blank" rel="noopener noreferrer"></a></p>
-      <p id="deploy-note" class="muted"></p>
-    </section>
+        <details class="help">
+          <summary>Ainda não tenho o .zip</summary>
+          <p>Peça isto à sua IA (ChatGPT, Claude, Lovable, Bolt...) e baixe o arquivo que ela gerar:</p>
+          <div class="copybox">
+            <p id="prompt-zip">Gere o site completo e me entregue em um único arquivo .zip pronto para publicar. Se ele precisar de build, inclua a pasta compilada (dist, build ou out). Não inclua node_modules nem arquivos .env.</p>
+            <button type="button" class="wc-btn btn-secondary btn-sm" data-copy="prompt-zip"><svg class="ic"><use href="#i-copy"/></svg><span>Copiar texto</span></button>
+          </div>
+        </details>
+      </section>
 
-    <p class="restart"><button type="button" id="restart" class="link" hidden>Começar de novo</button></p>
+      <section id="s-preview" class="panel" hidden>
+        <div class="row">
+          <div>
+            <h2>Sua prévia grátis</h2>
+            <p id="preview-msg" class="sub"></p>
+          </div>
+          <span class="wc-badge badge-green">Grátis · 24 h</span>
+        </div>
+        <p><a id="preview-link" class="wc-btn btn-primary" target="_blank" rel="noopener noreferrer" hidden><span>Abrir a prévia</span><svg class="ic"><use href="#i-external"/></svg></a></p>
+        <p id="preview-note" class="hint"></p>
+      </section>
 
-    <section class="card soft">
-      <h2>Prefere usar direto na sua IA?</h2>
-      <p>Conecte a Way Cloud como conector MCP (Claude, ChatGPT, Cursor) ou use a linha de comando.</p>
-      <dl class="kv">
-        <dt>Endereço do conector MCP</dt>
-        <dd><code id="mcp-url"></code> <button type="button" class="btn ghost small" data-copy="mcp-url">Copiar</button></dd>
-        <dt>Em uma IA que roda comandos</dt>
-        <dd><code id="cli-prompt"></code> <button type="button" class="btn ghost small" data-copy="cli-prompt">Copiar</button></dd>
-        <dt>Guia para IAs</dt>
-        <dd><a id="llms-link" href="/llms.txt">/llms.txt</a></dd>
-      </dl>
+      <section id="s-plans" class="panel" hidden>
+        <div class="row">
+          <div>
+            <h2>Escolha o plano</h2>
+            <p class="sub">Depois do pagamento, o site é publicado automaticamente.</p>
+          </div>
+          <div class="wc-tabs" role="group" aria-label="Ciclo de pagamento">
+            <button type="button" class="wc-tab active" data-cycle="mensal" aria-pressed="true">Mensal</button>
+            <button type="button" class="wc-tab" data-cycle="anual" aria-pressed="false">Anual</button>
+          </div>
+        </div>
+        <div id="plans" class="plans"></div>
+        <p class="hint"><svg class="ic"><use href="#i-lock"/></svg>O cadastro e o pagamento (Pix ou cartão) acontecem em uma página segura da Way Cloud. Não pedimos dados de pagamento aqui.</p>
+      </section>
+
+      <section id="s-wait" class="panel center" hidden>
+        <span class="pulse"><svg class="ic lg"><use href="#i-card"/></svg></span>
+        <h2>Aguardando o pagamento</h2>
+        <p id="wait-msg" class="sub">Abrimos a página de pagamento em outra aba. Assim que for confirmado, a publicação começa sozinha.</p>
+        <div class="bar" aria-hidden="true"><span></span></div>
+        <p><a id="checkout-link" class="wc-btn btn-ghost" target="_blank" rel="noopener noreferrer"><span>Abrir a página de pagamento</span><svg class="ic"><use href="#i-external"/></svg></a></p>
+      </section>
+
+      <section id="s-deploy" class="panel" hidden>
+        <h2 id="deploy-title">Publicando o seu site</h2>
+        <p id="deploy-msg" class="sub" role="status" aria-live="polite"></p>
+        <ol id="timeline" class="timeline" aria-label="Andamento da publicação">
+          <li data-stage="0">Na fila</li>
+          <li data-stage="1">Enviando os arquivos</li>
+          <li data-stage="2">Validando e ativando o HTTPS</li>
+          <li data-stage="3">No ar</li>
+        </ol>
+        <div id="deploy-done" hidden>
+          <p><a id="site-link" class="wc-btn btn-primary btn-lg" target="_blank" rel="noopener noreferrer"></a></p>
+        </div>
+        <p id="deploy-note" class="hint"></p>
+      </section>
+
+      <p class="restart"><button type="button" id="restart" class="link" hidden>Começar de novo</button></p>
+    </div>
+
+    <section id="ia" class="alt">
+      <p class="eyebrow dark">Para quem usa IA no dia a dia</p>
+      <h2 class="alt-title">Prefere publicar direto da sua IA?</h2>
+      <div class="cards">
+        <article class="wc-card wc-card-dark">
+          <span class="card-icon ci-white"><svg class="ic"><use href="#i-plug"/></svg></span>
+          <h3>Conector MCP</h3>
+          <p class="card-desc-light">Claude, ChatGPT e Cursor publicam por você. Adicione este endereço como conector.</p>
+          <code id="mcp-url"></code>
+          <button type="button" class="wc-btn btn-secondary btn-sm" data-copy="mcp-url"><svg class="ic"><use href="#i-copy"/></svg><span>Copiar</span></button>
+        </article>
+        <article class="wc-card">
+          <span class="card-icon ci-blue"><svg class="ic"><use href="#i-chat"/></svg></span>
+          <h3>Cole no chat</h3>
+          <p class="card-desc">Em uma IA que lê páginas e roda comandos, basta colar isto.</p>
+          <code id="cli-prompt"></code>
+          <button type="button" class="wc-btn btn-secondary btn-sm" data-copy="cli-prompt"><svg class="ic"><use href="#i-copy"/></svg><span>Copiar</span></button>
+        </article>
+        <article class="wc-card">
+          <span class="card-icon ci-blue"><svg class="ic"><use href="#i-doc"/></svg></span>
+          <h3>Guia para IAs</h3>
+          <p class="card-desc">O passo a passo que a sua IA lê para publicar o site sem erros.</p>
+          <a class="wc-btn btn-secondary btn-sm" href="/llms.txt"><span>Abrir o guia</span><svg class="ic"><use href="#i-external"/></svg></a>
+        </article>
+      </div>
     </section>
   </main>
 
-  <footer class="wrap foot">
-    <p>Way Cloud · Dúvidas: <a href="mailto:contato@waycloud.com.br">contato@waycloud.com.br</a></p>
+  <footer class="foot">
+    <div class="wrap foot-in">
+      <span class="brand small"><span class="logo"><svg viewBox="0 0 271 178" fill="none" aria-hidden="true" focusable="false"> <path fill-rule="evenodd" clip-rule="evenodd" d="M225.8 53.7l2.5-1c.5-.2.9-.4 1.4-.6l-.9 7.6c0 .3 0 .5.1.8l2.8 6.3c.5 1.1 2.1 1.1 2.6.1l7.4-15.3c.1-.3.1-.7.1-1l-.9-3.5c5.4-2.8 10.6-5.9 15.6-9.3l2-1.4c7.6-5.2 12.2-13.7 12.5-22.9l.2-5.9c.1-3.5-2.6-6.4-6.1-6.5l-6.6-.2C255 .6 246.6 4.2 240.9 10.8l-4.4 5.1c-3.3 3.8-6.4 7.8-9.3 12l-7-1c-.3 0-.6.1-.9.3L205 36c-1 .6-.9 2.2.3 2.6l6.5 2.1c.3.1.5.1.8.1l8-1.8c-.4.6-.7 1.3-1 1.9-1.8 3.4-1.3 7.1.6 9.7l-6.2 6.7c-.9 1 .4 2.4 1.4 1.6l7.8-5.6c2.2 1.3 5 1.6 7.8.5zm24.1-26.7c3.7.4 7.1-2.3 7.4-6 .4-3.7-2.3-7-6.1-7.4-3.7-.4-7 2.3-7.4 6-.4 3.7 2.3 7 6.1 7.4z" fill="white"/> <path d="M149.3 100.7C160.8 87.1 173 74.3 185.9 62.2c-13-11.4-30.1-18.3-48.7-18.3-28 0-52.5 15.5-65.1 38.5-1.6-.2-3.3-.3-5-.3-3.9 10.2-8.9 32.9-10.2 43.8-.1.7 0 1 .1 1.2.2.3.5.6 1 .8s.9.2 1.2.2c.2 0 .6-.1 1-.6l26-29.5 14.9-16.5c6.4-7 15.6-6.4 21.4-2.3 5.7 4.1 9.4 12.5 5 20.8-4 7.8-5.9 16.5-5.2 25.2.2 2.6 3.4 3.6 5 1.6l22.1-26z" fill="white"/> <path d="M236.7 143h-96.3l2.8-2.8 22-26c8.5-10 17.4-19.6 26.7-28.8 3.8-4.1 7-7.6 8.9-9.6 3.6-3.7 9.7-8.8 15-13.1 3.1-2.6 5.8-4.8 7.6-6.4l-18.5 32.6c.5 1.2 1 2.4 1.4 3.6 17.7 6.4 30.3 23.3 30.3 43.2 0 2.4-.2 4.8-.5 7.1v.3z" fill="white"/> <path d="M22.7 113.5c3.6-10.9 11.1-19.9 20.9-25.5-2 7.2-6.7 27.9-7.6 35.3-1 8.3 2.2 15.2 7.3 19.7H1c0-.7 0-1.3 0-2 0-13.4 9.3-24.6 21.7-27.5z" fill="white"/> <path d="M74 143h35.8c-.7-.9-7.8-9.8-8.3-16.4-.4-5.1-.2-10.2.6-15.2l-.2.3-26 29.4C75.3 142 74.6 142.6 74 143z" fill="white"/> </svg></span><span class="brand-name">waycloud</span></span>
+      <p>Dúvidas? <a href="mailto:contato@waycloud.com.br">contato@waycloud.com.br</a></p>
+    </div>
   </footer>
 
   <script type="module" src="/site.js"></script>
