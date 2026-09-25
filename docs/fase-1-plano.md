@@ -276,3 +276,12 @@ O serviço #1011 foi mantido ativo para testar o deploy do M5; cancelar ao final
 - DNS na Cloudflare: `*.waypreview.com.br` -> 177.11.55.72 (proxy ligado, prévias) e **`*.sites`** -> 177.11.55.71 (**somente DNS**, sites pagos e Let's Encrypt). Um registro chamado `sites` (sem o asterisco) não cobre os nomes abaixo dele: o wildcard `*` deixa de valer sob um nome que existe.
 - Segunda compra de teste feita pelo caminho real do checkout (cliente #750 já logado, sem navegador): pedido 1149, fatura #8079, serviço **#1014** (`wncr7fhrhl.sites.waypreview.com.br`). Publicado pelo agente em 15 s. O serviço antigo **#1011 foi encerrado** (`ModuleTerminate`, com travas). As faturas #8073 e #8079 seguem como pagas (teste) no WHMCS.
 - Achado: em PowerShell 5.1, canalizar `byte[]` para um comando externo envia cada byte como uma linha; canalizar a string funciona.
+
+## 15. Prévias em produção (servidas pelo serviço)
+
+O Easypanel só emite certificado curinga com um resolver de DNS (não há um configurado), então o `*.waypreview.com.br` não pode apontar direto para o app. Solução: o Cloudflare (proxy laranja em `*`) reescreve o Host para o domínio do serviço e entrega o original em `X-Preview-Host`:
+
+1. Rules → Transform Rules → *Modify Request Header*: expressão `ends_with(http.host, ".waypreview.com.br") and not ends_with(http.host, ".sites.waypreview.com.br")`; definir o cabeçalho `X-Preview-Host` = `http.host` (dinâmico).
+2. Rules → Origin Rules: mesma expressão; *Host Header* = `web-way-waycloud-ai-mcp.fzd763.easypanel.host` e *SNI* = o mesmo valor.
+
+O serviço usa `X-Preview-Host` quando presente (`preview-serve.ts`). Quem forjar o cabeçalho só alcança prévias, que já são públicas por slug.
