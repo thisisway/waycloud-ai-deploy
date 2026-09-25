@@ -49,7 +49,7 @@ const text = (tag, content, cls) => {
 
 function view(step, ...ids) {
   for (const id of SECTIONS) $(id).hidden = !ids.includes(id);
-  document.querySelectorAll(".stepper li").forEach((li) => {
+  document.querySelectorAll(".how li").forEach((li) => {
     const n = Number(li.dataset.step);
     li.classList.toggle("done", n < step);
     li.classList.toggle("cur", n === step);
@@ -98,8 +98,11 @@ function renderPreview() {
   $("preview-msg").textContent = state.preview_msg ?? "";
   const link = $("preview-link");
   link.hidden = !state.preview_url;
-  if (state.preview_url) link.href = state.preview_url;
-  $("preview-note").replaceChildren(...(state.preview_url ? [icon("eye"), document.createTextNode("A prévia fica no ar por 24 horas e não aparece no Google.")] : []));
+  if (state.preview_url) {
+    link.href = state.preview_url;
+    link.replaceChildren(document.createTextNode(state.preview_url.replace(/^https?:\/\//, "")), icon("external"));
+  }
+  $("preview-note").textContent = state.preview_url ? "Fica no ar por 24 horas e não aparece no Google." : "";
 }
 
 // ---- 2. plans + checkout ------------------------------------------------------------------
@@ -108,24 +111,27 @@ function planCard(p, best) {
   const price = monthly ? p.preco_mensal_centavos : p.preco_anual_centavos;
   const card = document.createElement("article");
   card.className = best ? "plan best" : "plan";
-  const btn = text("button", "Contratar", `wc-btn ${best ? "btn-primary" : "btn-secondary"}`);
-  btn.type = "button";
-  btn.addEventListener("click", () => checkout(p.pid, btn));
 
-  const feature = (t) => {
-    const li = document.createElement("li");
-    li.append(icon("check"), document.createTextNode(t));
-    return li;
-  };
-  const features = document.createElement("ul");
-  features.append(feature(`${p.disco_gb} GB de disco`), feature(`${p.dominios} ${p.dominios === 1 ? "domínio" : "domínios"}`), feature("HTTPS incluso"));
+  const info = document.createElement("div");
+  if (best) info.append(text("p", "Indicado para o seu site", "plan-fit"));
+  const domains = `${p.dominios} ${p.dominios === 1 ? "domínio" : "domínios"}`;
+  info.append(text("h3", p.nome), text("p", `${p.disco_gb} GB de disco · ${domains} · HTTPS incluso`, "plan-specs"), text("p", p.indicado_para, "plan-for"));
 
-  card.append(...(best ? [text("span", "Recomendado", "wc-badge badge-blue")] : []), text("h3", p.nome), text("p", brl(price), "plan-price"), text("p", monthly ? "por mês" : "por ano", "plan-per"));
+  const buy = document.createElement("div");
+  buy.className = "plan-buy";
+  const priceEl = text("p", brl(price), "plan-price");
+  priceEl.append(text("small", monthly ? " /mês" : " /ano"));
+  buy.append(priceEl);
   const yearFull = p.preco_mensal_centavos * 12;
   if (!monthly && p.preco_anual_centavos < yearFull) {
-    card.append(text("p", `${brl(Math.round(p.preco_anual_centavos / 12))} por mês, ${Math.round((1 - p.preco_anual_centavos / yearFull) * 100)}% de economia`, "plan-save"));
+    buy.append(text("p", `${brl(Math.round(p.preco_anual_centavos / 12))} por mês, ${Math.round((1 - p.preco_anual_centavos / yearFull) * 100)}% menos`, "plan-save"));
   }
-  card.append(features, text("p", p.indicado_para, "plan-for"), btn);
+  const btn = text("button", "Contratar", best ? "btn" : "btn line");
+  btn.type = "button";
+  btn.addEventListener("click", () => checkout(p.pid, btn));
+  buy.append(btn);
+
+  card.append(info, buy);
   return card;
 }
 
@@ -231,6 +237,7 @@ function showDone(note) {
   view(5, "s-deploy");
   setStage(3);
   $("deploy-title").textContent = "Seu site está no ar!";
+  $("site-link").className = "btn big";
   $("deploy-msg").textContent = "";
   const link = $("site-link");
   link.href = state.site_url;
@@ -248,11 +255,11 @@ for (const ev of ["dragenter", "dragover"]) drop.addEventListener(ev, (e) => (e.
 for (const ev of ["dragleave", "drop"]) drop.addEventListener(ev, () => drop.classList.remove("over"));
 drop.addEventListener("drop", (e) => (e.preventDefault(), handleFile(e.dataTransfer?.files?.[0])));
 
-document.querySelectorAll(".wc-tab").forEach((b) =>
+document.querySelectorAll(".seg-btn").forEach((b) =>
   b.addEventListener("click", () => {
     cycle = b.dataset.cycle;
-    document.querySelectorAll(".wc-tab").forEach((x) => {
-      x.classList.toggle("active", x === b);
+    document.querySelectorAll(".seg-btn").forEach((x) => {
+      x.classList.toggle("on", x === b);
       x.setAttribute("aria-pressed", String(x === b));
     });
     void showPlans().catch((e) => showAlert(e.message));
