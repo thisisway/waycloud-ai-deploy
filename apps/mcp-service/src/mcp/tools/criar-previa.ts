@@ -1,11 +1,10 @@
 import { erro, ok } from "@waycloud/shared";
-import { analyzeProject } from "../../detect/detect.js";
+import { PlansUnavailable } from "../../plans.js";
+import { previewSiteFromFiles } from "../../preview-site.js";
 import { newSlug, previewUrl, removePreview, writePreview } from "../../previews.js";
 import { findSession } from "../../sessions.js";
 import { prepareUpload, selectUpload } from "../../uploads.js";
 import { defineTool } from "./define.js";
-
-const text = (b: Uint8Array | undefined) => (b ? Buffer.from(b).toString("utf8").slice(0, 200_000) : undefined);
 
 export default defineTool(
   "criar_previa",
@@ -20,20 +19,17 @@ export default defineTool(
     if (!prepared.ok) return erro(prepared.codigo);
     const files = prepared.files;
 
-    const { analise, folder } = analyzeProject(
-      { arquivos: [...files].map(([caminho, b]) => ({ caminho, tamanho: b.length })), package_json: text(files.get("package.json")), composer_json: text(files.get("composer.json")) },
-      await ctx.plans(),
-    );
-    if (analise.tipo === "php") return erro("PREVIA_INDISPONIVEL_PHP");
-    if (analise.avisos.some((v) => v.codigo === "PASTA_BUILD_AUSENTE")) return erro("PASTA_BUILD_AUSENTE");
-    if (!analise.suportado || folder === null) return erro("PROJETO_NAO_SUPORTADO");
+    let built;
+    try {
+      built = previewSiteFromFiles(files, await ctx.plans());
+    } catch (e) {
+      if (e instanceof PlansUnavailable) return erro("PLANOS_INDISPONIVEIS");
+      throw e;
+    }
+    if (!built.ok) return erro(built.codigo);
 
-    const [{ n }] = await ctx.db.query<{ n: string }>("SELECT count(*)::text AS n FROM previews WHERE session_id = $1 AND status = 'active'", [session.id]) as [{ n: string }];
+    const [{ n }] = (await ctx.db.query<{ n: string }>("SELECT count(*)::text AS n FROM previews WHERE session_id = $1 AND status = 'active'", [session.id])) as [{ n: string }];
     if (Number(n) >= ctx.settings.maxActivePreviews) return erro("LIMITE_EXCEDIDO");
-
-    const prefix = folder === "." ? "" : `${folder}/`;
-    const site = new Map<string, Uint8Array>();
-    for (const [path, data] of files) if (path.startsWith(prefix)) site.set(path.slice(prefix.length), data);
 
     let slug = "";
     let expiresAt: Date | undefined;
@@ -48,7 +44,7 @@ export default defineTool(
     if (!expiresAt) throw new Error("could not allocate a preview slug");
 
     try {
-      await writePreview(ctx.settings.previewRoot, slug, site, analise.tipo === "spa");
+      await writePreview(ctx.settings.previewRoot, slug, built.site, built.spa);
     } catch (e) {
       await removePreview(ctx.settings.previewRoot, slug);
       await ctx.db.query("UPDATE previews SET status = 'failed' WHERE slug = $1", [slug]);

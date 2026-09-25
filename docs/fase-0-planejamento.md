@@ -94,7 +94,6 @@ Retenção (LGPD): sessões sem checkout, prévias e uploads não pagos apagados
 ├─ agent/                  # waycloud-agent (deploy nos servidores Plesk)
 ├─ whmcs/modules/addons/waycloud_ai/
 │  ├─ waycloud_ai.php  hooks.php  checkout.php  lib/  templates/
-├─ preview-edge/           # config do Nginx de prévias
 ├─ docs/{llms.txt, fase-0-planejamento.md, ...}
 ├─ tests/                  # mocks de WHMCS e Plesk + e2e do fluxo de pagamento→deploy
 ├─ docker-compose.yml  .env.example  README.md

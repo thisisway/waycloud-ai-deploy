@@ -1,6 +1,6 @@
-# Local development stack: Postgres, MinIO (S3 stand-in for Cloudflare R2), the preview edge and the MCP service.
+# Local development stack: Postgres, MinIO (S3 stand-in for Cloudflare R2), and the MCP service (which also serves the previews).
 #   docker compose up --build
-# MCP endpoint:  http://localhost:13000/mcp       Previews: http://<slug>.localhost:8081
+# MCP endpoint:  http://localhost:13000/mcp       Previews: http://<slug>.localhost:13000
 # MinIO console: http://localhost:19001 (waycloud / waycloud-dev-secret)
 
 services:
@@ -39,11 +39,6 @@ services:
                   mc mb --ignore-existing local/waycloud-ai"
     restart: "no"
 
-  preview-edge:
-    build: ./preview-edge
-    ports: ["8081:80"]
-    volumes: ["previews:/srv/previews:ro"]
-
   mcp-service:
     build:
       context: .
@@ -59,7 +54,7 @@ services:
       S3_SECRET_ACCESS_KEY: waycloud-dev-secret
       S3_BUCKET: waycloud-ai
       PREVIEW_ROOT: /srv/previews
-      PREVIEW_URL_TEMPLATE: http://{slug}.localhost:8081
+      PREVIEW_URL_TEMPLATE: http://{slug}.localhost:13000
       PORT: "3000"
     ports: ["13000:3000"]
     volumes: ["previews:/srv/previews"]

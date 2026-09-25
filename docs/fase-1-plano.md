@@ -59,7 +59,6 @@ packages/shared/src/{schemas.ts, errors.ts, messages.pt-br.ts, types.ts}
 packages/cli/src/{index.ts, deploy.ts, status.ts, logs.ts, rollback.ts,
                   pack.ts, ignore.ts}
 agent/{waycloud-agent.sh, waycloud-agent.service, install.sh, README.md}
-preview-edge/{nginx.conf, Dockerfile}
 whmcs/modules/addons/waycloud_ai/
   waycloud_ai.php              # _config/_activate/_deactivate/_upgrade/_output/_clientarea
   hooks.php  api.php  checkout.php
@@ -156,7 +155,7 @@ Ferramentas de admin do MVP no addon: mapa tipo→produto, limites, chaves HMAC,
 - `obter_url_upload`: URL pré-assinada de PUT (15 min) **assinada com o tamanho exato**; o storage recusa qualquer outro tamanho (verificado no R2 e no MinIO: 403 com tamanho errado, 200 com o certo). Limite de 20 uploads por sessão/dia.
 - `enviar_arquivos`: upload inline (até 5 MB, 200 arquivos), com varredura e pacote normalizado.
 - `criar_previa`: lê o .zip, varre, guarda o pacote limpo, publica só a pasta de saída (`dist/`, `build/`...) e devolve a URL e a expiração (24 h). PHP não tem prévia; SPA sem build, WordPress e projetos reprovados recebem mensagens fixas. Máximo de 3 prévias ativas por sessão; uma sessão nunca publica o upload de outra.
-- Nginx da prévia (`preview-edge/`): `X-Robots-Tag: noindex`, banner "Prévia Way Cloud", fallback de SPA por marcador, dotfiles nunca servidos, só aceita host `<slug de 10 caracteres>.<domínio>`.
+- Prévia servida pelo próprio serviço por Host (`preview-serve.ts`; substituiu o Nginx `preview-edge/`, que exigia um segundo serviço em produção): `X-Robots-Tag: noindex`, banner "Prévia Way Cloud", fallback de SPA por marcador, dotfiles e symlinks nunca servidos, só aceita host `<slug de 10 caracteres>.<domínio>`; após um redeploy apaga o disco, a pasta é refeita do pacote guardado no R2.
 - Manutenção a cada 10 min: remove prévias expiradas (pasta e registro), apaga uploads de sessões que nunca compraram (7 dias) e apaga sessões sem pedido 30 dias após expirar (LGPD).
 - `docker-compose.yml` (Postgres, MinIO, Nginx, serviço), `Dockerfile` do serviço e `.env.example`. Testado ponta a ponta na pilha real: IA cliente por MCP → upload inline e por URL pré-assinada → prévia aberta pelo Nginx.
 

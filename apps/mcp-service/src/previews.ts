@@ -4,7 +4,10 @@ import { dirname, join, resolve, sep } from "node:path";
 
 const ALPHABET = "abcdefghijklmnopqrstuvwxyz234567";
 export const SLUG_RE = /^[a-z2-7]{10}$/;
-export const SPA_MARKER = ".waycloud-spa"; // the Nginx edge falls back to index.html when this file exists
+export const SPA_MARKER = ".waycloud-spa"; // the preview server falls back to index.html (SPA routes) when this file exists
+
+/** Matches <slug>.<base domain> for a preview host and captures the slug. */
+export const newSlugRe = (baseHost: string) => new RegExp(`^([a-z2-7]{10})\\.${baseHost.replaceAll(".", "\\.")}$`); // a host name only holds letters, digits, "-" and "."
 
 export const newSlug = () => Array.from(randomBytes(10), (b) => ALPHABET[b % 32]).join("");
 

@@ -2,6 +2,7 @@ import Fastify from "fastify";
 import { StreamableHTTPServerTransport } from "@modelcontextprotocol/sdk/server/streamableHttp.js";
 import { createMcpServer } from "./mcp/server.js";
 import { registerAgentRoutes } from "./agent.js";
+import { registerPreviewHost } from "./preview-serve.js";
 import { handleWhmcsWebhook } from "./webhooks.js";
 import type { ToolContext } from "./mcp/tools/define.js";
 
@@ -29,6 +30,7 @@ export function buildApp(ctx: ToolContext, opts: { webhookSecret?: string } = {}
     });
   }
 
+  registerPreviewHost(app, ctx); // previews are served by Host, before any route
   registerAgentRoutes(app, ctx);
 
   // Stateless Streamable HTTP: a fresh MCP server + transport per request. Our own session id
