@@ -295,3 +295,11 @@ export default {
 ```
 
 O serviço usa `X-Preview-Host` quando presente (`preview-serve.ts`). Quem forjar o cabeçalho só alcança prévias, que já são públicas por slug. `*.sites` continua "DNS only" apontando para o Plesk. Verificado em produção: `https://<slug>.waypreview.com.br` responde 200 com banner e `X-Robots-Tag: noindex`; caminho inexistente responde 404 do serviço. Limite do plano gratuito do Worker: 100 mil requisições por dia.
+
+## 16. Página pública de envio
+
+Para quem usa uma IA sem MCP nem comandos (ChatGPT, Claude.ai, Lovable...): a IA entrega um `.zip` e o cliente o arrasta na página inicial do serviço (`apps/mcp-service/public/`, servida em `/`). A página usa as mesmas ferramentas do MCP (same-origin, `POST /mcp`) e um único endpoint extra, `PUT /web/upload/:uploadId`, que grava o `.zip` no R2 pelo serviço (o navegador nunca fala com o R2, então não há CORS a configurar). Fluxo: enviar → prévia → planos (filtrados pelo tipo do projeto) → pagamento em outra aba → publicação automática → link do site. O estado fica em `localStorage`, então recarregar ou voltar do pagamento continua de onde parou.
+
+- CSP restrita (`script-src 'self'`, sem estilos nem scripts inline, sem recursos externos), verificada por teste; o código da página não usa `innerHTML`.
+- `listar_planos` passou a devolver `tipos` (tipos de projeto que o plano atende) para a página não oferecer plano estático a um site PHP.
+- Endereço público: o Worker do Cloudflare também atende o domínio raiz (`waypreview.com.br/*`), que o serviço trata como o site (página, `/mcp`, `/llms`), e não como prévia.

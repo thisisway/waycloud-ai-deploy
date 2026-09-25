@@ -13,7 +13,7 @@ Todo texto para o cliente está em português do Brasil. Código e commits em in
 
 | Pasta | O quê |
 |---|---|
-| `apps/mcp-service` | Serviço MCP (TypeScript, Fastify, Streamable HTTP sem estado): 11 ferramentas, prévias, fila de deploy, rotas do agente |
+| `apps/mcp-service` | Serviço MCP (TypeScript, Fastify, Streamable HTTP sem estado): 11 ferramentas, prévias, fila de deploy, rotas do agente e a página pública de envio (`public/`) |
 | `packages/shared` | Schemas Zod das ferramentas, envelope de resposta e catálogo de mensagens pt-BR |
 | `packages/cli` | CLI `npx waycloud` (deploy, plans, checkout, status) |
 | `whmcs/modules/addons/waycloud_ai` | Addon do WHMCS (PHP): checkout, provisionamento, webhooks assinados |
@@ -31,7 +31,8 @@ docker compose up --build        # Postgres, MinIO (no lugar do R2) e o serviço
 ```
 
 - MCP: `http://localhost:13000/mcp`
-- Guia para IAs: `http://localhost:13000/llms.txt`
+- Página de envio (arrastar o .zip, prévia, plano, pagamento, publicação): `http://localhost:13000/`
+- Guia para IAs: `http://localhost:13000/llms.txt` (também em `/llms`)
 - Prévias: `http://<slug>.localhost:13000`
 - Console do MinIO: `http://localhost:19001` (waycloud / waycloud-dev-secret)
 

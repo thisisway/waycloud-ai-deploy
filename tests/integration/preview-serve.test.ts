@@ -119,7 +119,7 @@ describe("preview host", () => {
     expect((await get(`${slug}.preview.test`)).statusCode).toBe(404); // expired
     for (const host of ["preview.test", "www.preview.test", "abc.preview.test", "abcdefghij.other.test"]) {
       const r = await get(host, "/healthz");
-      expect(r.statusCode, host).toBe(host.endsWith("other.test") ? 200 : 404); // only hosts under the preview domain are treated as previews
+      expect(r.statusCode, host).toBe(host === "preview.test" || host.endsWith("other.test") ? 200 : 404); // subdomains of the preview domain are previews; the bare domain is the public site
     }
   });
 

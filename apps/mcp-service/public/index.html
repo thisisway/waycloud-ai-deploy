@@ -1,0 +1,102 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Way Cloud · Publique seu site</title>
+  <meta name="description" content="Arraste o .zip do site que a sua IA criou, veja uma prévia grátis e publique com HTTPS.">
+  <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='8' fill='%230b3d91'/%3E%3Cpath d='M9 21a5 5 0 0 1 1-9.9A6 6 0 0 1 21.5 12 4.5 4.5 0 0 1 22 21z' fill='white'/%3E%3C/svg%3E">
+  <link rel="stylesheet" href="/site.css">
+</head>
+<body>
+  <header class="top">
+    <div class="wrap"><strong class="brand">Way Cloud</strong><span class="tag">Publicação de sites criados com IA</span></div>
+  </header>
+
+  <main class="wrap">
+    <section class="hero">
+      <h1>Publique o site que a sua IA criou</h1>
+      <p>Arraste o arquivo <strong>.zip</strong> do site, veja uma prévia grátis e, se gostar, publique com HTTPS. Sem instalar nada.</p>
+    </section>
+
+    <ol class="steps" aria-label="Etapas">
+      <li data-step="1" class="on">Enviar</li>
+      <li data-step="2">Prévia</li>
+      <li data-step="3">Plano</li>
+      <li data-step="4">No ar</li>
+    </ol>
+
+    <div id="alert" class="alert" role="alert" aria-live="assertive" hidden></div>
+
+    <section id="s-upload" class="card">
+      <h2>1. Envie o seu site</h2>
+      <label id="drop" class="drop" tabindex="0">
+        <input id="file" type="file" accept=".zip,application/zip" hidden>
+        <span class="drop-title">Arraste o .zip aqui</span>
+        <span class="drop-sub">ou clique para escolher o arquivo (até 50 MB)</span>
+      </label>
+      <p id="upload-status" class="muted" aria-live="polite"></p>
+
+      <details class="help">
+        <summary>Ainda não tenho o .zip</summary>
+        <p>Peça isto à sua IA (ChatGPT, Claude, Lovable, Bolt...) e depois baixe o arquivo:</p>
+        <pre id="prompt-zip">Gere o site completo e me entregue em um único arquivo .zip pronto para publicar. Se ele precisar de build, inclua a pasta compilada (dist, build ou out). Não inclua node_modules nem arquivos .env.</pre>
+        <button type="button" class="btn ghost" data-copy="prompt-zip">Copiar texto</button>
+      </details>
+    </section>
+
+    <section id="s-preview" class="card" hidden>
+      <h2>2. Sua prévia grátis</h2>
+      <p id="preview-msg"></p>
+      <p><a id="preview-link" class="btn" target="_blank" rel="noopener noreferrer" hidden>Abrir a prévia</a></p>
+      <p id="preview-note" class="muted"></p>
+    </section>
+
+    <section id="s-plans" class="card" hidden>
+      <h2>3. Escolha o plano</h2>
+      <div class="cycle" role="group" aria-label="Ciclo de pagamento">
+        <button type="button" class="on" data-cycle="mensal">Mensal</button>
+        <button type="button" data-cycle="anual">Anual</button>
+      </div>
+      <div id="plans" class="plans"></div>
+      <p class="muted">O cadastro e o pagamento (Pix ou cartão) acontecem em uma página segura da Way Cloud. Não pedimos dados de pagamento aqui.</p>
+    </section>
+
+    <section id="s-wait" class="card" hidden>
+      <h2>Aguardando o pagamento</h2>
+      <p id="wait-msg">Abrimos a página de pagamento em outra aba. Assim que for confirmado, a publicação começa sozinha.</p>
+      <p><a id="checkout-link" class="btn" target="_blank" rel="noopener noreferrer">Abrir a página de pagamento</a></p>
+      <p class="progress" aria-hidden="true"><span></span></p>
+    </section>
+
+    <section id="s-deploy" class="card" hidden>
+      <h2>4. Publicando</h2>
+      <p id="deploy-msg"></p>
+      <p class="progress" id="deploy-bar" aria-hidden="true"><span></span></p>
+      <p id="deploy-done" hidden><a id="site-link" class="btn" target="_blank" rel="noopener noreferrer"></a></p>
+      <p id="deploy-note" class="muted"></p>
+    </section>
+
+    <p class="restart"><button type="button" id="restart" class="link" hidden>Começar de novo</button></p>
+
+    <section class="card soft">
+      <h2>Prefere usar direto na sua IA?</h2>
+      <p>Conecte a Way Cloud como conector MCP (Claude, ChatGPT, Cursor) ou use a linha de comando.</p>
+      <dl class="kv">
+        <dt>Endereço do conector MCP</dt>
+        <dd><code id="mcp-url"></code> <button type="button" class="btn ghost small" data-copy="mcp-url">Copiar</button></dd>
+        <dt>Em uma IA que roda comandos</dt>
+        <dd><code id="cli-prompt"></code> <button type="button" class="btn ghost small" data-copy="cli-prompt">Copiar</button></dd>
+        <dt>Guia para IAs</dt>
+        <dd><a id="llms-link" href="/llms.txt">/llms.txt</a></dd>
+      </dl>
+    </section>
+  </main>
+
+  <footer class="wrap foot">
+    <p>Way Cloud · Dúvidas: <a href="mailto:contato@waycloud.com.br">contato@waycloud.com.br</a></p>
+  </footer>
+
+  <script type="module" src="/site.js"></script>
+</body>
+</html>

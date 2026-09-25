@@ -5,6 +5,7 @@ import { createMcpServer } from "./mcp/server.js";
 import { registerAgentRoutes } from "./agent.js";
 import { registerPreviewHost } from "./preview-serve.js";
 import { handleWhmcsWebhook } from "./webhooks.js";
+import { registerWeb } from "./web.js";
 import type { ToolContext } from "./mcp/tools/define.js";
 
 export function buildApp(ctx: ToolContext, opts: { webhookSecret?: string } = {}) {
@@ -15,7 +16,7 @@ export function buildApp(ctx: ToolContext, opts: { webhookSecret?: string } = {}
   // The guide for AI assistants (docs/llms.txt), read once; without the file (e.g. a slim image) the route is simply absent.
   try {
     const llms = readFileSync(new URL("../../../docs/llms.txt", import.meta.url), "utf8");
-    app.get("/llms.txt", async (_req, reply) => reply.type("text/plain; charset=utf-8").send(llms));
+    for (const path of ["/llms.txt", "/llms"]) app.get(path, async (_req, reply) => reply.type("text/plain; charset=utf-8").send(llms));
   } catch {
     /* no llms.txt next to the sources */
   }
@@ -41,6 +42,7 @@ export function buildApp(ctx: ToolContext, opts: { webhookSecret?: string } = {}
 
   registerPreviewHost(app, ctx); // previews are served by Host, before any route
   registerAgentRoutes(app, ctx);
+  registerWeb(app, ctx);
 
   // Stateless Streamable HTTP: a fresh MCP server + transport per request. Our own session id
   // travels as the `sessao_id` tool argument, so no server-side MCP session is kept.

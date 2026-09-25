@@ -17,6 +17,7 @@ export default defineTool(
           preco_mensal_centavos: p.monthlyCents,
           preco_anual_centavos: p.annualCents,
           indicado_para: p.blurb,
+          tipos: p.types,
         })),
       });
     } catch (e) {

@@ -42,6 +42,10 @@ Sem OAuth: a sessão é anônima e vai no argumento `sessao_id` de cada ferramen
 - `status_deploy(sessao_id, deploy_id)`: andamento da publicação.
 - `verificar_site(sessao_id)`: checagem do site no ar.
 
+## Sem MCP: página de envio
+
+O cliente pode pedir a você um arquivo `.zip` do site (com a pasta de build, sem `node_modules` nem `.env`) e enviá-lo na página inicial do serviço: arrasta o `.zip`, vê a prévia, escolhe o plano, paga e a publicação começa sozinha. Se você não consegue chamar as ferramentas acima, gere o `.zip` e mande o cliente para a página.
+
 ## Sem MCP: linha de comando
 
 Qualquer agente que rode comandos pode usar a CLI, com o mesmo fluxo:

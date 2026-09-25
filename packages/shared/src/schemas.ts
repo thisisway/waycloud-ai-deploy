@@ -74,6 +74,7 @@ export const saidas = {
             preco_mensal_centavos: z.number().int(),
             preco_anual_centavos: z.number().int(),
             indicado_para: z.string(),
+            tipos: z.array(z.enum(TIPOS_PROJETO)), // project types this plan is meant for; empty = any
           })
           .strict(),
       ),
