@@ -4,6 +4,7 @@ import { afterAll, beforeAll, describe, expect, it } from "vitest";
 // @ts-expect-error plain ESM served to the browser, without type declarations
 import { Api, ensureSession, sendZip } from "../../apps/mcp-service/public/flow.js";
 import { buildApp } from "../../apps/mcp-service/src/server.js";
+import { MAX_WEB_ZIP_BYTES } from "../../apps/mcp-service/src/web.js";
 import { testCtx } from "../helpers.js";
 
 type T = Awaited<ReturnType<typeof testCtx>>;
@@ -110,7 +111,7 @@ describe("browser flow (flow.js against the real service)", () => {
     expect((await put(mine.sessao_id, "00000000-0000-4000-8000-000000000000", good)).status).toBe(404);
     expect((await put(mine.sessao_id, up.dados.upload_id, strToU8("isto não é um zip, só texto comum aqui"))).status).toBe(400);
     // Too big: the server refuses (413) and may cut the connection while the client is still sending.
-    const big = await put(mine.sessao_id, up.dados.upload_id, new Uint8Array(51 * 1024 * 1024)).then((r) => r.status, () => "reset");
+    const big = await put(mine.sessao_id, up.dados.upload_id, new Uint8Array(MAX_WEB_ZIP_BYTES + 1)).then((r) => r.status, () => "reset");
     expect([413, "reset"]).toContain(big);
     expect((await put(mine.sessao_id, up.dados.upload_id, good)).status).toBe(200); // still usable after the failed attempts
   });

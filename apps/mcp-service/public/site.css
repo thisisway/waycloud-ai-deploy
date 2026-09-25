@@ -121,7 +121,7 @@ h2 { font-size: 22px; font-weight: 700; letter-spacing: -0.02em; line-height: 1.
 .fstate.ok::before { content: "\2713"; display: inline-flex; align-items: center; justify-content: center; width: 16px; height: 16px; border-radius: 50%; background: #17c86a; color: var(--white); font-size: 10px; }
 
 .help { margin-top: 16px; font-size: 13.5px; color: var(--ink-2); }
-.help summary, .ia summary { cursor: pointer; font-weight: 600; color: var(--blue-dark); width: fit-content; }
+.help summary { cursor: pointer; font-weight: 600; color: var(--blue-dark); width: fit-content; }
 .help p { margin: 10px 0; }
 .quote { border-left: 3px solid var(--blue); background: #fbfcff; border-radius: 0 10px 10px 0; padding: 10px 14px; }
 .quote p { margin: 0 0 6px; font-size: 13px; color: var(--ink); }
@@ -181,14 +181,15 @@ h2 { font-size: 22px; font-weight: 700; letter-spacing: -0.02em; line-height: 1.
 .timeline li.cur::before { border-color: var(--blue); background: var(--blue-tint); }
 #deploy-done { margin-top: 18px; }
 
-/* ---- use it from your AI ---- */
-.ia { margin-top: 30px; padding-top: 22px; border-top: 1px solid var(--line); font-size: 13.5px; }
-.ia .sub { margin: 10px 0 4px; }
-.use-list > div { padding: 14px 0; border-bottom: 1px solid var(--line); display: grid; gap: 8px; }
-.use-list dt { font-weight: 700; font-size: 14px; }
-.use-list dt span { display: block; font-weight: 400; font-size: 12.5px; color: var(--ink-3); }
+/* ---- use it from your AI (lives in the brand pane, always visible) ---- */
+.ia { margin-top: 44px; max-width: 460px; }
+.ia h2 { font-size: 17px; }
+.ia .sub { margin: 6px 0 8px; font-size: 13.5px; }
+.use-list > div { padding: 12px 0; border-bottom: 1px solid var(--line); display: grid; gap: 6px; }
+.use-list dt { font-weight: 700; font-size: 13.5px; }
+.use-list dt span { display: block; font-weight: 400; font-size: 12px; color: var(--ink-3); }
 .use-list dd { display: flex; gap: 12px; align-items: flex-start; justify-content: space-between; }
-code { flex: 1; min-width: 0; font-family: ui-monospace, "SF Mono", Consolas, monospace; font-size: 12px; line-height: 1.5; background: #fbfcff; border: 1px solid var(--line); border-radius: 8px; padding: 8px 11px; word-break: break-word; }
+code { flex: 1; min-width: 0; font-family: ui-monospace, "SF Mono", Consolas, monospace; font-size: 12px; line-height: 1.5; background: rgba(255, 255, 255, 0.92); border: 1px solid var(--line); border-radius: 8px; padding: 8px 11px; word-break: break-word; }
 .use-list .text-btn { margin-top: 5px; }
 
 @media (max-width: 520px) { .pane.form { padding: 16px 16px 20px; } .drop { min-height: 190px; } }

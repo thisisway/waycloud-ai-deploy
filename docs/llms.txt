@@ -33,7 +33,7 @@ Sem OAuth: a sessão é anônima e vai no argumento `sessao_id` de cada ferramen
 - `iniciar_sessao()`: cria a sessão.
 - `analisar_projeto(sessao_id, manifesto)`: detecta o tipo de projeto e recomenda o plano.
 - `listar_planos()`: planos, disco, domínios e preços em centavos.
-- `obter_url_upload(sessao_id, tamanho_bytes)`: URL de upload (PUT) de um `.zip` de até 50 MB.
+- `obter_url_upload(sessao_id, tamanho_bytes)`: URL de upload (PUT) de um `.zip` de até 100 MB.
 - `enviar_arquivos(sessao_id, arquivos[{caminho, conteudo_base64}])`: envio direto de sites pequenos.
 - `criar_previa(sessao_id, upload_id?)`: prévia grátis e temporária.
 - `criar_checkout(sessao_id, plano_pid, ciclo)`: link de pagamento.

@@ -24,7 +24,7 @@ const HEADERS = {
   "cache-control": "no-cache",
 };
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/;
-export const MAX_WEB_ZIP_BYTES = 50 * 1024 * 1024; // same cap as the pre-signed upload
+export const MAX_WEB_ZIP_BYTES = 100 * 1024 * 1024; // same cap as the pre-signed upload (schemas.ts) and the archive limits
 
 export function registerWeb(app: FastifyInstance, ctx: ToolContext) {
   for (const [path, { file, type, immutable }] of Object.entries(PAGES)) {

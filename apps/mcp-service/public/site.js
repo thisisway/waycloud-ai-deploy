@@ -26,7 +26,7 @@ const save = (patch) => {
   store.set(state);
 };
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
-const MAX_BYTES = 50 * 1024 * 1024;
+const MAX_BYTES = 100 * 1024 * 1024; // keep in sync with MAX_WEB_ZIP_BYTES in web.ts
 const SECTIONS = ["s-upload", "s-preview", "s-plans", "s-wait", "s-deploy"];
 const STEP_NAMES = ["Enviar", "Prévia", "Plano", "No ar"];
 const STAGE_OF = { na_fila: 0, enviando: 1, validando: 2, publicado: 3 };
@@ -74,7 +74,7 @@ async function handleFile(file) {
   clearAlert();
   if (!file) return;
   if (!/\.zip$/i.test(file.name)) return showAlert("Envie o site em um arquivo .zip.");
-  if (file.size > MAX_BYTES) return showAlert("O arquivo passou de 50 MB. Envie só a pasta do site, sem node_modules.");
+  if (file.size > MAX_BYTES) return showAlert("O arquivo passou de 100 MB. Envie só a pasta do site, sem node_modules.");
   const status = $("upload-status");
   $("drop").classList.add("busy");
   $("file-name").textContent = file.name;
@@ -296,7 +296,6 @@ document.querySelectorAll("[data-copy]").forEach((b) =>
   }),
 );
 
-$("open-ia").addEventListener("click", () => ($("ia").open = true));
 startRibbons($("ribbons"));
 
 $("mcp-url").textContent = `${location.origin}/mcp`;

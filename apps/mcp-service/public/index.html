@@ -27,7 +27,7 @@
       <header class="bar">
         <a class="logo" href="/" aria-label="Way Cloud, página inicial"><img src="/waycloud-logo.svg" alt="Waycloud" width="137" height="28"></a>
         <nav class="bar-nav" aria-label="Principal">
-          <a href="#ia" id="open-ia">Usar na sua IA</a>
+          <a href="#ia">Usar na sua IA</a>
           <a href="/llms.txt">Guia para IAs</a>
         </nav>
       </header>
@@ -49,7 +49,7 @@
             <input id="file" type="file" accept=".zip,application/zip" hidden>
             <svg class="ic cloud"><use href="#i-cloud"/></svg>
             <span class="drop-text">Arraste o arquivo .zip aqui ou <u class="pick">Procurar arquivos</u></span>
-            <span class="drop-sub">Até 50 MB</span>
+            <span class="drop-sub">Até 100 MB</span>
           </label>
           <ul id="files" class="files" hidden>
             <li>
@@ -111,24 +111,6 @@
 
         <p class="restart"><button type="button" id="restart" class="text-btn muted" hidden>Começar de novo</button></p>
 
-        <details id="ia" class="ia">
-          <summary>Prefere usar direto na sua IA?</summary>
-          <p class="sub">Claude, ChatGPT, Cursor e outras ferramentas podem publicar por você.</p>
-          <dl class="use-list">
-            <div>
-              <dt>Conector MCP<span>Adicione este endereço como conector na sua IA.</span></dt>
-              <dd><code id="mcp-url"></code><button type="button" class="text-btn" data-copy="mcp-url"><svg class="ic"><use href="#i-copy"/></svg><span>Copiar</span></button></dd>
-            </div>
-            <div>
-              <dt>Cole no chat<span>Para IAs que leem páginas e rodam comandos.</span></dt>
-              <dd><code id="cli-prompt"></code><button type="button" class="text-btn" data-copy="cli-prompt"><svg class="ic"><use href="#i-copy"/></svg><span>Copiar</span></button></dd>
-            </div>
-            <div>
-              <dt>Guia para IAs<span>O passo a passo que a sua IA lê para publicar sem erros.</span></dt>
-              <dd><a class="link-out" href="/llms.txt"><span>Abrir o guia</span><svg class="ic"><use href="#i-external"/></svg></a></dd>
-            </div>
-          </dl>
-        </details>
       </main>
 
       <footer class="legal">
@@ -147,6 +129,24 @@
           <li><svg class="ic"><use href="#i-check"/></svg>Pix ou cartão</li>
           <li><svg class="ic"><use href="#i-check"/></svg>Servidores no Brasil</li>
         </ul>
+        <section id="ia" class="ia" aria-labelledby="ia-title">
+          <h2 id="ia-title">Prefere usar direto na sua IA?</h2>
+          <p class="sub">Claude, ChatGPT, Cursor e outras ferramentas podem publicar por você.</p>
+          <dl class="use-list">
+            <div>
+              <dt>Conector MCP<span>Adicione este endereço como conector na sua IA.</span></dt>
+              <dd><code id="mcp-url"></code><button type="button" class="text-btn" data-copy="mcp-url"><svg class="ic"><use href="#i-copy"/></svg><span>Copiar</span></button></dd>
+            </div>
+            <div>
+              <dt>Cole no chat<span>Para IAs que leem páginas e rodam comandos.</span></dt>
+              <dd><code id="cli-prompt"></code><button type="button" class="text-btn" data-copy="cli-prompt"><svg class="ic"><use href="#i-copy"/></svg><span>Copiar</span></button></dd>
+            </div>
+            <div>
+              <dt>Guia para IAs<span>O passo a passo que a sua IA lê para publicar sem erros.</span></dt>
+              <dd><a class="link-out" href="/llms.txt"><span>Abrir o guia</span><svg class="ic"><use href="#i-external"/></svg></a></dd>
+            </div>
+          </dl>
+        </section>
       </div>
     </aside>
   </div>

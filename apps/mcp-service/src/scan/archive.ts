@@ -2,7 +2,7 @@ import { unzipSync } from "fflate";
 import { normalizePath } from "../security/sanitize.js";
 
 const MB = 1024 * 1024;
-export const DEFAULT_LIMITS = { maxZipBytes: 50 * MB, maxFiles: 10_000, maxFileBytes: 25 * MB, maxTotalBytes: 200 * MB };
+export const DEFAULT_LIMITS = { maxZipBytes: 100 * MB, maxFiles: 10_000, maxFileBytes: 50 * MB, maxTotalBytes: 300 * MB };
 export type Limits = typeof DEFAULT_LIMITS;
 
 export type ArchiveErrorCode = "ZIP_TOO_BIG" | "ZIP_TOO_MANY_FILES" | "ZIP_FILE_TOO_BIG" | "ZIP_EXPANDS_TOO_MUCH" | "ZIP_BAD_PATH" | "ZIP_CORRUPT";

@@ -54,13 +54,13 @@ describe("readZip", () => {
   });
 
   it("a classic bomb (huge zeros) is caught by the declared size before inflating", () => {
-    const bomb = zipSync({ "zeros.bin": new Uint8Array(30 * 1024 * 1024) }); // ~30 KB zipped, 30 MB expanded
+    const bomb = zipSync({ "zeros.bin": new Uint8Array(DEFAULT_LIMITS.maxFileBytes + 5 * 1024 * 1024) }); // tiny zipped, just over the per-file cap expanded
     expect(bomb.length).toBeLessThan(200_000);
-    expect(code(() => readZip(bomb))).toBe("ZIP_FILE_TOO_BIG"); // default per-file cap is 25 MB
+    expect(code(() => readZip(bomb))).toBe("ZIP_FILE_TOO_BIG"); // default per-file cap
   });
 
   it("a header that lies about the size cannot inflate beyond what it declares", () => {
-    const zip = zipSync({ "a.bin": new Uint8Array(30 * 1024 * 1024) });
+    const zip = zipSync({ "a.bin": new Uint8Array(DEFAULT_LIMITS.maxFileBytes + 5 * 1024 * 1024) });
     const dv = new DataView(zip.buffer, zip.byteOffset, zip.byteLength);
     for (let i = 0; i < zip.length - 30; i++) {
       if (dv.getUint32(i, true) === 0x04034b50) dv.setUint32(i + 22, 100, true); // local header

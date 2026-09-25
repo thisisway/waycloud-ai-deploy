@@ -8,7 +8,7 @@ const isSecret = (name) => /^\.env(\..+)?$/.test(name) && !/\.(example|sample|te
 // Build output is usually git-ignored but is exactly what a static/SPA site needs to publish.
 const BUILD_DIRS = new Set(["dist", "build", "out", ".output"]);
 const MAX_FILES = 10_000;
-const MAX_ZIP_BYTES = 50 * 1024 * 1024;
+const MAX_ZIP_BYTES = 100 * 1024 * 1024;
 
 export class PackError extends Error {}
 
@@ -86,6 +86,6 @@ export function packProject(dir) {
 
   if (!count) throw new PackError("Nenhum arquivo para enviar. Confira a pasta e o .gitignore.");
   const zip = zipSync(files, { level: 6 });
-  if (zip.length > MAX_ZIP_BYTES) throw new PackError("O pacote passou de 50 MB. Adicione pastas pesadas ao .waycloudignore (ou envie só a pasta de build).");
+  if (zip.length > MAX_ZIP_BYTES) throw new PackError("O pacote passou de 100 MB. Adicione pastas pesadas ao .waycloudignore (ou envie só a pasta de build).");
   return { zip, count };
 }

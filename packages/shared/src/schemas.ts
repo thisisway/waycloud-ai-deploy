@@ -28,7 +28,7 @@ export const entradas = {
   iniciar_sessao: z.object({}).strict(),
   analisar_projeto: z.object({ sessao_id: sessaoId, manifesto }).strict(),
   listar_planos: z.object({}).strict(),
-  obter_url_upload: z.object({ sessao_id: sessaoId, tamanho_bytes: z.number().int().min(1).max(50 * 1024 * 1024) }).strict(),
+  obter_url_upload: z.object({ sessao_id: sessaoId, tamanho_bytes: z.number().int().min(1).max(100 * 1024 * 1024) }).strict(),
   enviar_arquivos: z
     .object({
       sessao_id: sessaoId,
