@@ -17,7 +17,7 @@ export default defineTool(
       if (e instanceof PlansUnavailable) return erro("PLANOS_INDISPONIVEIS");
       throw e;
     }
-    await ctx.db.query("INSERT INTO projects (session_id, detected_type, analysis) VALUES ($1, $2, $3::jsonb)", [session.id, analise.tipo, JSON.stringify(analise)]);
+    await ctx.db.query("INSERT INTO projects (session_id, detected_type, analysis) VALUES ($1, $2, $3::text::jsonb)", [session.id, analise.tipo, JSON.stringify(analise)]);
     return ok(analise.suportado ? "PROJETO_ANALISADO" : "PROJETO_NAO_SUPORTADO", analise);
   },
 );

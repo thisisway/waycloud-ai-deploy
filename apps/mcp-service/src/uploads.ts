@@ -28,12 +28,12 @@ export async function storePackage(ctx: ToolContext, sessionId: string, uploadId
   const result = scan(input);
   const report = JSON.stringify(result.findings);
   if (!result.approved) {
-    await ctx.db.query("UPDATE uploads SET scan_status = 'blocked', scan_report = $2::jsonb WHERE id = $1", [uploadId, report]);
+    await ctx.db.query("UPDATE uploads SET scan_status = 'blocked', scan_report = $2::text::jsonb WHERE id = $1", [uploadId, report]);
     return { ok: false };
   }
   const packed = packZip(result.files);
   await ctx.storage.put(packageKey(sessionId, uploadId), packed.zip);
-  await ctx.db.query("UPDATE uploads SET scan_status = 'clean', sha256 = $2, size_bytes = $3, scan_report = $4::jsonb WHERE id = $1", [uploadId, packed.sha256, packed.zip.length, report]);
+  await ctx.db.query("UPDATE uploads SET scan_status = 'clean', sha256 = $2, size_bytes = $3, scan_report = $4::text::jsonb WHERE id = $1", [uploadId, packed.sha256, packed.zip.length, report]);
   const warnings = [...new Set(result.findings.flatMap((f) => WARNING_OF[f.code] ?? []))];
   return { ok: true, files: result.files, totalBytes: [...result.files.values()].reduce((n, b) => n + b.length, 0), warnings };
 }

@@ -43,7 +43,7 @@ export default defineTool(
 
     const pkg = buildSitePackage(prepared.files, folder, analise.tipo === "spa");
     const deployId = await createDeploy(ctx, sub, upload.id, pkg, { spa: analise.tipo === "spa", phpVersion: analise.versao_php });
-    await ctx.db.query("INSERT INTO audit_log (correlation_id, actor, action, meta) VALUES ($1, 'session', 'deploy.queued', $2::jsonb)", [session.id, JSON.stringify({ deploy_id: deployId, type: analise.tipo })]);
+    await ctx.db.query("INSERT INTO audit_log (correlation_id, actor, action, meta) VALUES ($1, 'session', 'deploy.queued', $2::text::jsonb)", [session.id, JSON.stringify({ deploy_id: deployId, type: analise.tipo })]);
     return ok("DEPLOY_INICIADO", { deploy_id: deployId });
   },
 );

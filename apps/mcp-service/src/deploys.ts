@@ -44,7 +44,7 @@ export async function createDeploy(ctx: ToolContext, sub: { whmcs_service_id: nu
   const key = deployKey(sub.whmcs_service_id, id);
   await ctx.storage.put(key, pkg.zip);
   const params: DeployParams = { spa: opts.spa, php_version: opts.phpVersion, sha256: pkg.sha256, size_bytes: pkg.zip.length, keep: KEEP_SNAPSHOTS };
-  await ctx.db.query("INSERT INTO deploys (id, subscription_id, upload_id, status, params, package_key) VALUES ($1, $2, $3, 'queued', $4::jsonb, $5)", [id, sub.whmcs_service_id, uploadId, JSON.stringify(params), key]);
+  await ctx.db.query("INSERT INTO deploys (id, subscription_id, upload_id, status, params, package_key) VALUES ($1, $2, $3, 'queued', $4::text::jsonb, $5)", [id, sub.whmcs_service_id, uploadId, JSON.stringify(params), key]);
   return id;
 }
 
@@ -70,7 +70,9 @@ export async function claimNextJob(db: Db, serverId: string): Promise<AgentJob |
     [serverId],
   );
   if (!row) return null;
-  return { job_id: row.id, domain: row.domain, sha256: row.params.sha256, size_bytes: row.params.size_bytes, php_version: row.params.php_version, spa: row.params.spa, keep_snapshots: row.params.keep };
+  // Older rows were written by a driver that double-encoded JSON (a jsonb *string*): read both shapes.
+  const p: DeployParams = typeof row.params === "string" ? (JSON.parse(row.params) as DeployParams) : row.params;
+  return { job_id: row.id, domain: row.domain, sha256: p.sha256, size_bytes: p.size_bytes, php_version: p.php_version, spa: p.spa, keep_snapshots: p.keep };
 }
 
 export interface AgentReport {

@@ -55,7 +55,7 @@ export async function handleWhmcsWebhook(db: Db, secret: string, sig: SignedRequ
       }
       const applied = await apply(t, parsed.event, data.data as never);
       if (!applied) result = { status: 200, body: { ok: true, ignored: "unknown_session" } };
-      await t.query("INSERT INTO audit_log (correlation_id, actor, action, meta) VALUES ($1, 'whmcs', $2, $3::jsonb)", [data.data.session_id, parsed.event, JSON.stringify({ event_id: parsed.id, applied })]);
+      await t.query("INSERT INTO audit_log (correlation_id, actor, action, meta) VALUES ($1, 'whmcs', $2, $3::text::jsonb)", [data.data.session_id, parsed.event, JSON.stringify({ event_id: parsed.id, applied })]);
     });
     return result;
   } catch (e) {
