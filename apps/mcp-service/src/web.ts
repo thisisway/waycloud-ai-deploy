@@ -13,12 +13,15 @@ const PAGES: Record<string, { file: string; type: string; immutable?: boolean }>
   "/site.css": { file: "site.css", type: "text/css; charset=utf-8" },
   "/site.js": { file: "site.js", type: "text/javascript; charset=utf-8" },
   "/flow.js": { file: "flow.js", type: "text/javascript; charset=utf-8" },
+  "/chat.js": { file: "chat.js", type: "text/javascript; charset=utf-8" },
   "/ribbons.js": { file: "ribbons.js", type: "text/javascript; charset=utf-8" },
   "/waycloud-logo.svg": { file: "waycloud-logo.svg", type: "image/svg+xml" },
   "/fonts/plus-jakarta-sans-v12-latin.woff2": { file: "fonts/plus-jakarta-sans-v12-latin.woff2", type: "font/woff2", immutable: true }, // self-hosted: no request to Google
 };
+// Scripts stay strict (own files + the support chat SDK). Styles allow inline only because the chat widget injects its own.
+const CHAT = "https://chatwoot.waycloud.com.br";
 const HEADERS = {
-  "content-security-policy": "default-src 'none'; script-src 'self'; style-src 'self'; font-src 'self'; connect-src 'self'; img-src 'self' data:; base-uri 'none'; form-action 'none'; frame-ancestors 'none'",
+  "content-security-policy": `default-src 'none'; script-src 'self' ${CHAT}; style-src 'self' 'unsafe-inline'; font-src 'self' ${CHAT} data:; connect-src 'self' ${CHAT} wss://chatwoot.waycloud.com.br; img-src 'self' data: ${CHAT}; media-src ${CHAT}; frame-src ${CHAT}; base-uri 'none'; form-action 'none'; frame-ancestors 'none'`,
   "x-content-type-options": "nosniff",
   "referrer-policy": "no-referrer",
   "cache-control": "no-cache",
