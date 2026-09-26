@@ -11,6 +11,8 @@ export interface Settings {
   maxActivePreviews: number;
   /** Name the customer's DNS points to (an A record of ours): resolved to the Plesk IP each time it is shown. */
   siteTargetHost: string;
+  /** Our authoritative nameservers (Plesk DNS): a domain delegated to them is configured automatically. */
+  nameservers: string[];
   /** Where the agent script and its signature are read from (tests point it elsewhere). */
   agentDir?: string;
 }
@@ -24,6 +26,7 @@ export const DEFAULT_SETTINGS: Settings = {
   maxUploadsPerDay: 20,
   maxActivePreviews: 3,
   siteTargetHost: "hospedagem.waycloud.com.br",
+  nameservers: ["ns1.waycloud.com.br", "ns2.waycloud.com.br"],
 };
 
 const env = z.object({
@@ -43,12 +46,13 @@ const env = z.object({
   PREVIEW_URL_TEMPLATE: z.string().includes("{slug}").default(DEFAULT_SETTINGS.previewUrlTemplate),
   PREVIEW_TTL_HOURS: z.coerce.number().positive().default(DEFAULT_SETTINGS.previewTtlHours),
   SITE_TARGET_HOST: z.string().regex(/^[a-z0-9.-]+$/).default(DEFAULT_SETTINGS.siteTargetHost),
+  SITE_NAMESERVERS: z.string().regex(/^[a-z0-9.-]+(,[a-z0-9.-]+)*$/).default(DEFAULT_SETTINGS.nameservers.join(",")),
 });
 
 export function loadConfig(source: NodeJS.ProcessEnv) {
   const e = env.parse(source);
   const s3: S3Config = { endpoint: e.S3_ENDPOINT, publicEndpoint: e.S3_PUBLIC_ENDPOINT, region: e.S3_REGION, accessKeyId: e.S3_ACCESS_KEY_ID, secretAccessKey: e.S3_SECRET_ACCESS_KEY, bucket: e.S3_BUCKET };
-  const settings: Settings = { ...DEFAULT_SETTINGS, previewRoot: e.PREVIEW_ROOT, previewUrlTemplate: e.PREVIEW_URL_TEMPLATE, previewTtlHours: e.PREVIEW_TTL_HOURS, siteTargetHost: e.SITE_TARGET_HOST };
+  const settings: Settings = { ...DEFAULT_SETTINGS, previewRoot: e.PREVIEW_ROOT, previewUrlTemplate: e.PREVIEW_URL_TEMPLATE, previewTtlHours: e.PREVIEW_TTL_HOURS, siteTargetHost: e.SITE_TARGET_HOST, nameservers: e.SITE_NAMESERVERS.split(",") };
   if (!!e.ADDON_URL !== !!e.ADDON_HMAC_SECRET) throw new Error("ADDON_URL and ADDON_HMAC_SECRET must be set together");
   const addon = e.ADDON_URL && e.ADDON_HMAC_SECRET ? { url: e.ADDON_URL, secret: e.ADDON_HMAC_SECRET } : undefined;
   return { databaseUrl: e.DATABASE_URL, port: e.PORT, host: e.HOST, s3, settings, addon, agentTokens: e.AGENT_TOKENS };

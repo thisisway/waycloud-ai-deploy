@@ -45,8 +45,9 @@ export function isReserved(domain: string, previewTemplate: string): boolean {
 
 export interface Resolver {
   resolve4(host: string): Promise<string[]>;
+  resolveNs(host: string): Promise<string[]>;
 }
-export const systemResolver: Resolver = { resolve4: (h) => dns.resolve4(h) };
+export const systemResolver: Resolver = { resolve4: (h) => dns.resolve4(h), resolveNs: (h) => dns.resolveNs(h) };
 
 const safeResolve = async (r: Resolver, host: string): Promise<string[]> => {
   try {
@@ -55,19 +56,34 @@ const safeResolve = async (r: Resolver, host: string): Promise<string[]> => {
     return []; // NXDOMAIN, no A record, timeout: all mean "not there yet"
   }
 };
+const safeNs = async (r: Resolver, host: string): Promise<string[]> => {
+  try {
+    return (await r.resolveNs(host)).map((n) => n.toLowerCase().replace(/\.$/, ""));
+  } catch {
+    return [];
+  }
+};
 
 /** Where the customer must point the DNS: the target name and the IP(s) it resolves to today. */
 export async function dnsTarget(r: Resolver, targetHost: string): Promise<{ host: string; ips: string[] }> {
   return { host: targetHost, ips: await safeResolve(r, targetHost) };
 }
 
-/** The domain is ours to serve when ALL its A records are ours (a leftover record elsewhere would split the visitors). */
-export async function checkDns(r: Resolver, domain: string, targetHost: string): Promise<{ ok: boolean; www: boolean }> {
-  const ours = await safeResolve(r, targetHost);
-  if (!ours.length) return { ok: false, www: false }; // our own target is not resolving: never approve anything
-  const pointsToUs = (ips: string[]) => ips.length > 0 && ips.every((ip) => ours.includes(ip));
-  const [main, www] = await Promise.all([safeResolve(r, domain), safeResolve(r, `www.${domain}`)]);
-  return { ok: pointsToUs(main), www: pointsToUs(www) };
+/**
+ * The domain is ours to serve in one of two ways:
+ *  - "records": ALL its A records are ours (a leftover record elsewhere would split the visitors);
+ *  - "ns": its nameservers are ours (and only ours): the Plesk DNS zone is created when the site moves to the domain.
+ */
+export async function checkDns(r: Resolver, domain: string, targetHost: string, nameservers: string[]): Promise<{ ok: boolean; www: boolean; via?: "records" | "ns" }> {
+  const [ours, ns] = await Promise.all([safeResolve(r, targetHost), safeNs(r, domain)]);
+  if (ours.length) {
+    const pointsToUs = (ips: string[]) => ips.length > 0 && ips.every((ip) => ours.includes(ip));
+    const [main, www] = await Promise.all([safeResolve(r, domain), safeResolve(r, `www.${domain}`)]);
+    if (pointsToUs(main)) return { ok: true, www: pointsToUs(www), via: "records" };
+  }
+  const mine = nameservers.map((n) => n.toLowerCase());
+  if (ns.length > 0 && ns.every((n) => mine.includes(n))) return { ok: true, www: true, via: "ns" }; // our zone has the www record too
+  return { ok: false, www: false };
 }
 
 // ---- requests -----------------------------------------------------------------------------------------
@@ -112,9 +128,9 @@ export async function requestDomain(ctx: ToolContext, sessionId: string, input: 
 export async function checkOne(ctx: ToolContext, id: string, resolver: Resolver): Promise<void> {
   const [row] = await ctx.db.query<{ id: string; domain: string; attempts: number; created_at: Date }>("SELECT id, domain, attempts, created_at FROM domain_changes WHERE id = $1 AND status = 'waiting_dns'", [id]);
   if (!row) return;
-  const r = await checkDns(resolver, row.domain, ctx.settings.siteTargetHost);
+  const r = await checkDns(resolver, row.domain, ctx.settings.siteTargetHost, ctx.settings.nameservers);
   if (r.ok) {
-    await ctx.db.query("UPDATE domain_changes SET status = 'ready', include_www = $2, next_check_at = now(), updated_at = now() WHERE id = $1 AND status = 'waiting_dns'", [id, r.www]);
+    await ctx.db.query("UPDATE domain_changes SET status = 'ready', include_www = $2, dns_mode = $3, next_check_at = now(), updated_at = now() WHERE id = $1 AND status = 'waiting_dns'", [id, r.www, r.via ?? "records"]);
     return;
   }
   const wait = BACKOFF_SECONDS[Math.min(row.attempts, BACKOFF_SECONDS.length - 1)]!;
@@ -149,7 +165,7 @@ export async function cancelDomainRequest(db: Db, sessionId: string): Promise<bo
 // ---- what the customer sees ---------------------------------------------------------------------------------
 
 export const TEXTO_STATUS: Record<DomainStatus, string> = {
-  waiting_dns: "Aguardando o DNS do seu domínio apontar para a Way Cloud. Pode levar de alguns minutos a algumas horas, e você não precisa ficar nesta página: assim que responder, a gente continua sozinho.",
+  waiting_dns: "Aguardando o DNS do seu domínio: use os nameservers da Way Cloud OU os registros abaixo (escolha um). Pode levar de alguns minutos a algumas horas para propagar, e você não precisa ficar nesta página: assim que responder, a gente continua sozinho.",
   ready: "O DNS já está certo. Estamos configurando o seu domínio no servidor.",
   switching: "Configurando o seu domínio no servidor e ativando o HTTPS.",
   active: "Pronto! O seu domínio é o endereço principal do site.",
@@ -167,11 +183,12 @@ export const TEXTO_ERRO = {
 } as const;
 
 /** The DNS records the customer must create (values are ours: never taken from what they typed). */
-export function dnsInstructions(domain: string, target: { host: string; ips: string[] }) {
+export function dnsInstructions(domain: string, target: { host: string; ips: string[] }, nameservers: string[]) {
   const ip = target.ips[0] ?? null;
   return {
     alvo: target.host,
     ip,
+    nameservers,
     registros: [
       { tipo: "A", nome: domain, valor: ip ?? target.host, alternativa: `ou CNAME/ALIAS para ${target.host}, se o seu provedor de DNS aceitar no domínio principal` },
       { tipo: "CNAME", nome: `www.${domain}`, valor: target.host, alternativa: null },
@@ -186,20 +203,21 @@ export interface DomainJob {
   domain: string;
   old_domain: string;
   include_www: boolean;
+  dns_mode: "records" | "ns";
 }
 
 /** Hands the oldest ready request of this server to its agent (two pollers never get the same one). */
 export async function claimDomainJob(db: Db, serverId: string): Promise<DomainJob | null> {
-  const [row] = await db.query<{ id: string; domain: string; old_domain: string; include_www: boolean }>(
+  const [row] = await db.query<{ id: string; domain: string; old_domain: string; include_www: boolean; dns_mode: string | null }>(
     `UPDATE domain_changes c SET status = 'switching', step = 'claimed', claimed_at = now(), old_domain = s.domain, updated_at = now()
       FROM subscriptions s
      WHERE s.whmcs_service_id = c.subscription_id
        AND c.id = (SELECT c2.id FROM domain_changes c2 JOIN subscriptions s2 ON s2.whmcs_service_id = c2.subscription_id
                     WHERE s2.server_id = $1 AND c2.status = 'ready' ORDER BY c2.created_at LIMIT 1 FOR UPDATE OF c2 SKIP LOCKED)
-    RETURNING c.id, c.domain, c.old_domain, c.include_www`,
+    RETURNING c.id, c.domain, c.old_domain, c.include_www, c.dns_mode`,
     [serverId],
   );
-  return row ? { job_id: row.id, domain: row.domain, old_domain: row.old_domain, include_www: row.include_www } : null;
+  return row ? { job_id: row.id, domain: row.domain, old_domain: row.old_domain, include_www: row.include_www, dns_mode: row.dns_mode === "ns" ? "ns" : "records" } : null;
 }
 
 export interface DomainReport {

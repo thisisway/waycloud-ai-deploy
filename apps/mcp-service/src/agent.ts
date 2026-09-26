@@ -40,6 +40,9 @@ const report = z
   .object({ status: z.enum(["validating", "published", "failed", "rolled_back"]), step: z.string().regex(/^[a-z0-9_]{1,40}$/).optional(), error_code: z.string().regex(/^[a-z0-9_]{1,40}$/).optional(), ssl: z.boolean().optional() })
   .strict();
 
+// What the agent sends when something fails: the tail of its own logs, so problems can be read from the service side.
+const diag = z.object({ job_id: z.string().regex(/^[0-9a-f-]{36}$/), kind: z.string().regex(/^[a-z0-9_]{1,40}$/), text: z.string().max(20_000) }).strict();
+
 const domainReport = z
   .object({ status: z.enum(["active", "failed"]), step: z.string().regex(/^[a-z0-9_]{1,40}$/).optional(), error_code: z.string().regex(/^[a-z0-9_]{1,40}$/).optional(), ssl: z.boolean().optional() })
   .strict();
@@ -82,6 +85,13 @@ export function registerAgentRoutes(app: FastifyInstance, ctx: ToolContext) {
       await ctx.db.query("UPDATE servers SET last_seen_at = now() WHERE id = $1", [serverId]);
       const job = await claimNextJob(ctx.db, serverId);
       return job ? reply.send(job) : reply.code(204).send();
+    });
+
+    scope.post("/diag", { bodyLimit: 32 * 1024 }, async (req, reply) => {
+      const b = diag.safeParse(req.body);
+      if (!b.success) return reply.code(400).send({ error: "invalid_body" });
+      console.log(JSON.stringify({ msg: "agent diag", server: serverOf(req), job: b.data.job_id, kind: b.data.kind, text: b.data.text.slice(0, 15_000) }));
+      return reply.send({ ok: true });
     });
 
     // The customer's own domain: the agent switches the site on its server (rename, certificate) and reports back.

@@ -25,6 +25,7 @@ beforeAll(async () => {
   base = `http://127.0.0.1:${(app.server.address() as { port: number }).port}`;
 });
 afterAll(async () => {
+  app.server.closeAllConnections(); // the oversized-upload test leaves a half-sent request behind
   await app.close();
   await t.close();
 });

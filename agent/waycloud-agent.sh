@@ -29,7 +29,7 @@ WC_MAX_BYTES="${WC_MAX_BYTES:-524288000}"    # 500 MB
 WC_MAX_FILES="${WC_MAX_FILES:-50000}"
 
 # Versions only ever go up (YYYY-MM-DD.NN): a replayed older script is refused even when its signature is valid.
-WC_AGENT_VERSION="2026-09-26.01"
+WC_AGENT_VERSION="2026-09-26.02"
 # Public key that new versions of this script must be signed with (the private key never leaves the maintainer's machine).
 WC_SIGN_PUB='-----BEGIN PUBLIC KEY-----
 MIIBojANBgkqhkiG9w0BAQEFAAOCAY8AMIIBigKCAYEA4BAeaQeUa8dGkXKKtxqM
@@ -46,7 +46,7 @@ uqOrcbsutlwzhWhE/gyuxVtqymjxsf6Jeg507vANs3mrAgMBAAE=
 BODY="$WC_STATE/response.json"
 PHP_OK=" 7.4 8.0 8.1 8.2 8.3 8.4 "
 
-log() { printf '%s %s\n' "$(date -u +%FT%TZ)" "$*"; }
+log() { printf '%s %s\n' "$(date -u +%FT%TZ)" "$*" | tee -a "$WC_STATE/agent.log" 2> /dev/null; } # journald has it too; the file feeds the diagnostics
 
 api() { # api METHOD PATH [json-file] -> prints the HTTP status (000 on network error), body in $BODY
   local args=(-sS -m 60 -o "$BODY" -w '%{http_code}' -X "$1" -H "Authorization: Bearer $WC_TOKEN" -H "X-Agent-Version: $WC_AGENT_VERSION")
@@ -64,6 +64,24 @@ post_report() { # post_report jobs|domain-jobs JOB STATUS [step] [error_code] [s
 }
 report() { post_report jobs "$@"; }         # report JOB STATUS [step] [error_code] [ssl]
 report_domain() { post_report domain-jobs "$@"; }
+
+# Failures are explained to the service (the tail of the agent's own logs and what Plesk says about the domain),
+# so nobody has to log in to a server to read them. Never contains configuration or tokens.
+send_diag() { # send_diag JOB KIND [DOMAIN]
+  is_uuid "$1" || return 0
+  local id=$1 kind=$2 domain=${3:-} text
+  text=$( {
+    echo "== agent.log"; tail -n 40 "$WC_STATE/agent.log" 2>/dev/null
+    echo "== plesk.log"; tail -n 40 "$WC_STATE/plesk.log" 2>/dev/null
+    echo "== letsencrypt.log"; grep -v 'proc_close\|filemng' "$WC_STATE/letsencrypt.log" 2>/dev/null | tail -n 30
+    if [ -n "$domain" ]; then
+      echo "== site --info $domain"; "$WC_PLESK" bin site --info "$domain" 2>&1 | head -n 40
+      echo "== dns --info $domain"; "$WC_PLESK" bin dns --info "$domain" 2>&1 | head -n 30
+    fi
+  } | head -c 15000)
+  jq -cn --arg j "$id" --arg k "$kind" --arg t "$text" '{job_id:$j, kind:$k, text:$t}' > "$WC_STATE/diag.json"
+  api POST /diag "$WC_STATE/diag.json" > /dev/null
+}
 
 is_uuid()   { [[ "$1" =~ ^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$ ]]; }
 is_sha256() { [[ "$1" =~ ^[0-9a-f]{64}$ ]]; }
@@ -120,7 +138,7 @@ retry_ssl() {
     name=$(basename "$f"); domain=${name%@*}; kind=${name#*@}
     read -r id first tries next www < "$f" || continue
     www=${www:-false}
-    if (( now - first > 86400 )); then log "ssl: giving up on $domain after 24 hours"; rm -f "$f"; continue; fi
+    if (( now - first > 86400 )); then log "ssl: giving up on $domain after 24 hours"; send_diag "$id" ssl_gave_up "$domain"; rm -f "$f"; continue; fi
     (( now < next )) && continue
     if [ "$(ensure_ssl "$domain" "$www")" = true ]; then
       log "ssl: certificate ready for $domain"
@@ -209,7 +227,7 @@ deploy() { # deploy JOB-JSON-FILE
   local_check "$domain" || { restore check local_check_failed; return; }
 
   local ssl; ssl=$(ensure_ssl "$domain")
-  if [ "$ssl" = true ]; then rm -f "$WC_STATE/ssl-pending/$domain@deploy"; else mark_ssl_pending "$id" "$domain" deploy; fi
+  if [ "$ssl" = true ]; then rm -f "$WC_STATE/ssl-pending/$domain@deploy"; else mark_ssl_pending "$id" "$domain" deploy; send_diag "$id" ssl_pending "$domain"; fi
   prune "$work/snapshots" "$keep"
   report "$id" published finished "" "$ssl"
 }
@@ -217,8 +235,8 @@ deploy() { # deploy JOB-JSON-FILE
 # The customer's own domain becomes the site's main domain (the provisional one goes away). Either the whole switch
 # works, or Plesk is put back as it was: the site is never left half-moved.
 switch_domain() { # switch_domain JOB-JSON-FILE
-  local f=$1 id old new www
-  id=$(jq -r '.job_id // empty' "$f"); old=$(jq -r '.old_domain // empty' "$f")
+  local f=$1 id old new www mode
+  id=$(jq -r '.job_id // empty' "$f"); old=$(jq -r '.old_domain // empty' "$f"); mode=$(jq -r '.dns_mode // "records"' "$f")
   new=$(jq -r '.domain // empty' "$f"); www=$(jq -r 'if .include_www == true then "true" else "false" end' "$f")
   is_uuid "$id" || { log "domain job rejected: bad job id"; return; }
   if ! is_domain "$old" || ! is_domain "$new" || [ "$old" = "$new" ]; then log "domain job=$id rejected: invalid domain"; report_domain "$id" failed validate invalid_domain; return; fi
@@ -227,11 +245,11 @@ switch_domain() { # switch_domain JOB-JSON-FILE
   log "domain job=$id switching $old -> $new"
 
   # 1. the main domain of the subscription becomes the customer's (Plesk moves the vhost folder along)
-  "$WC_PLESK" bin subscription --update "$old" -new-name "$new" >> "$WC_STATE/plesk.log" 2>&1 || { report_domain "$id" failed rename rename_failed; return; }
+  "$WC_PLESK" bin subscription --update "$old" -new-name "$new" >> "$WC_STATE/plesk.log" 2>&1 || { report_domain "$id" failed rename rename_failed; send_diag "$id" rename_failed "$old"; return; }
   if [ ! -d "$WC_VHOSTS/$new/httpdocs" ]; then # not where the deploys expect it: put everything back
     "$WC_PLESK" bin subscription --update "$new" -new-name "$old" >> "$WC_STATE/plesk.log" 2>&1
     log "domain job=$id: docroot not at the new name, reverted"
-    report_domain "$id" failed rename docroot_not_moved; return
+    report_domain "$id" failed rename docroot_not_moved; send_diag "$id" docroot_not_moved "$old"; return
   fi
   if [ -d "$WC_WORK/$old" ] && [ ! -e "$WC_WORK/$new" ]; then mv -- "$WC_WORK/$old" "$WC_WORK/$new"; fi # the rollback snapshots follow the site
 
@@ -240,12 +258,17 @@ switch_domain() { # switch_domain JOB-JSON-FILE
     "$WC_PLESK" bin subscription --update "$new" -new-name "$old" >> "$WC_STATE/plesk.log" 2>&1
     if [ -d "$WC_WORK/$new" ] && [ ! -e "$WC_WORK/$old" ]; then mv -- "$WC_WORK/$new" "$WC_WORK/$old"; fi
     log "domain job=$id: site did not answer on $new, reverted"
-    report_domain "$id" failed check local_check_failed; return
+    report_domain "$id" failed check local_check_failed; send_diag "$id" local_check_failed "$old"; return
   fi
 
-  # 3. certificate (the redirect stays off until it exists); the domain is active either way
+  # 3. nameserver mode: the DNS zone is Plesk's own and appears with the rename; say so if it did not
+  if [ "$mode" = ns ] && ! "$WC_PLESK" bin dns --info "$new" > /dev/null 2>&1; then
+    log "domain job=$id: no Plesk DNS zone for $new (nameserver mode)"; send_diag "$id" no_dns_zone "$new"
+  fi
+
+  # 4. certificate (the redirect stays off until it exists); the domain is active either way
   local ssl; ssl=$(ensure_ssl "$new" "$www")
-  if [ "$ssl" = true ]; then rm -f "$WC_STATE/ssl-pending/$new@domain"; else mark_ssl_pending "$id" "$new" domain "$www"; fi
+  if [ "$ssl" = true ]; then rm -f "$WC_STATE/ssl-pending/$new@domain"; else mark_ssl_pending "$id" "$new" domain "$www"; send_diag "$id" ssl_pending "$new"; fi
   report_domain "$id" active finished "" "$ssl"
 }
 
@@ -270,7 +293,8 @@ self_update() { # self_update "$@" (the arguments to restart with)
   [[ "$newv" =~ ^[0-9]{4}-[0-9]{2}-[0-9]{2}\.[0-9]{2}$ ]] || { log "update: new script has no valid version"; return 0; }
   [[ "$newv" > "$WC_AGENT_VERSION" ]] || { log "update: $newv is not newer than $WC_AGENT_VERSION, ignoring"; return 0; }
   bash -n "$new" 2> /dev/null || { log "update: $newv does not parse, ignoring"; return 0; }
-  bash "$new" --selftest 2> /dev/null | grep -q "^waycloud-agent $newv ok$" || { log "update: $newv failed its self-test, ignoring"; return 0; }
+  local probe; probe=$(bash "$new" --selftest 2> /dev/null)
+  [ "$probe" = "waycloud-agent $newv ok" ] || { log "update: $newv failed its self-test, ignoring"; return 0; }
   install -m 750 "$new" "$self.next" && mv -f "$self.next" "$self" || { log "update: could not install $newv"; return 0; }
   log "update: installed $newv (was $WC_AGENT_VERSION), restarting"
   exec "$self" "$@"
@@ -278,6 +302,7 @@ self_update() { # self_update "$@" (the arguments to restart with)
 
 main() {
   mkdir -p "$WC_STATE"; chmod 700 "$WC_STATE"
+  if [ "$(stat -c %s "$WC_STATE/agent.log" 2> /dev/null || echo 0)" -gt 1048576 ]; then mv -f "$WC_STATE/agent.log" "$WC_STATE/agent.log.1"; fi
   exec 9> "$WC_STATE/agent.lock"; flock -n 9 || { log "another agent instance is running"; exit 1; }
   trap 'log "stopping"; exit 0' TERM INT
   log "agent started version=$WC_AGENT_VERSION api=$WC_API"

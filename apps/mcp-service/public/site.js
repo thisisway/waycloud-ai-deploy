@@ -332,32 +332,58 @@ function showDone(note) {
 // ---- 4. the customer's own domain --------------------------------------------------------------------------------
 let domainRun = 0;
 
+function copyButton(value) {
+  const copy = text("button", "Copiar", "text-btn");
+  copy.type = "button";
+  copy.addEventListener("click", async () => {
+    try {
+      await navigator.clipboard.writeText(value);
+      copy.textContent = "Copiado!";
+      setTimeout(() => (copy.textContent = "Copiar"), 2000);
+    } catch {
+      showAlert("Não consegui copiar. Selecione o valor e copie manualmente.");
+    }
+  });
+  return copy;
+}
+
+function dnsRow(tipo, nome, valor, extra) {
+  const row = document.createElement("div");
+  row.className = "dns-row";
+  const value = document.createElement("div");
+  value.className = "val";
+  value.append(...(nome ? [text("small", `Nome: ${nome}`)] : []), text("code", valor), ...(extra ? [text("small", extra)] : []));
+  row.append(text("b", tipo), value, copyButton(valor));
+  return row;
+}
+
+function dnsOption(title, intro, rows, warning) {
+  const box = document.createElement("section");
+  box.className = "opt";
+  const list = document.createElement("div");
+  list.className = "dns";
+  list.append(...rows);
+  box.append(text("h4", title), text("p", intro, "note"), ...(warning ? [text("p", warning, "note warn")] : []), list);
+  return box;
+}
+
+/** The two ways to point the domain: our nameservers (everything automatic) or A/CNAME records in the customer's own DNS. */
 function renderDns(dns) {
-  const box = $("dns-records");
-  box.replaceChildren(
-    ...dns.registros.map((r) => {
-      const row = document.createElement("div");
-      row.className = "dns-row";
-      const value = document.createElement("div");
-      value.className = "val";
-      const code = text("code", r.valor);
-      value.append(text("small", `Nome: ${r.nome}`), code, ...(r.alternativa ? [text("small", r.alternativa)] : []));
-      const copy = text("button", "Copiar", "text-btn");
-      copy.type = "button";
-      copy.addEventListener("click", async () => {
-        try {
-          await navigator.clipboard.writeText(r.valor);
-          copy.textContent = "Copiado!";
-          setTimeout(() => (copy.textContent = "Copiar"), 2000);
-        } catch {
-          showAlert("Não consegui copiar. Selecione o valor e copie manualmente.");
-        }
-      });
-      row.append(text("b", r.tipo), value, copy);
-      return row;
-    }),
+  const [a, cname] = dns.registros;
+  $("dns-records").replaceChildren(
+    dnsOption(
+      "Opção 1: nameservers da Way Cloud (o mais simples)",
+      "No lugar onde você registrou o domínio (Registro.br, GoDaddy...), troque os nameservers por estes. A gente configura todo o DNS do site para você.",
+      dns.nameservers.map((ns, i) => dnsRow(`NS ${i + 1}`, null, ns)),
+      "Atenção: isso leva o DNS inteiro do domínio para a Way Cloud, inclusive o e-mail. Use se o domínio é novo ou não tem e-mail configurado.",
+    ),
+    dnsOption(
+      "Opção 2: registros no seu DNS (Cloudflare e outros)",
+      "Se o seu domínio já tem e-mail ou outros serviços, mantenha o DNS onde está e crie estes dois registros. No Cloudflare, deixe a nuvem cinza (só DNS).",
+      [dnsRow(a.tipo, a.nome, a.valor, a.alternativa), dnsRow(cname.tipo, cname.nome, cname.valor)],
+    ),
   );
-  box.hidden = false;
+  $("dns-records").hidden = false;
 }
 
 /** Shows what the service says about the domain request, and keeps looking while something is still moving. */

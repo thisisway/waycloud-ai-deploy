@@ -17,7 +17,12 @@ const OURS = ["177.11.55.71"];
 
 /** DNS as a table: host -> A records. Anything else does not resolve. */
 const dnsMap = new Map<string, string[]>([[TARGET, OURS]]);
-const resolver: Resolver = { resolve4: async (h) => { const v = dnsMap.get(h); if (!v) throw Object.assign(new Error("ENOTFOUND"), { code: "ENOTFOUND" }); return v; } };
+const nsMap = new Map<string, string[]>();
+const NS = ["ns1.waycloud.com.br", "ns2.waycloud.com.br"];
+const resolver: Resolver = {
+  resolve4: async (h) => { const v = dnsMap.get(h); if (!v) throw Object.assign(new Error("ENOTFOUND"), { code: "ENOTFOUND" }); return v; },
+  resolveNs: async (h) => { const v = nsMap.get(h); if (!v) throw Object.assign(new Error("ENODATA"), { code: "ENODATA" }); return v; },
+};
 const pointToUs = (d: string, www = false) => (dnsMap.set(d, OURS), www && dnsMap.set(`www.${d}`, OURS));
 
 let ctx: ToolContext;
@@ -88,15 +93,31 @@ describe("DNS check", () => {
     dnsMap.set("mixed.test", [...OURS, "203.0.113.9"]); // a leftover record would split the visitors
     dnsMap.set("elsewhere.test", ["203.0.113.9"]);
     dnsMap.set("www.ok.test", OURS);
-    expect(await checkDns(resolver, "ok.test", TARGET)).toEqual({ ok: true, www: true });
-    expect(await checkDns(resolver, "mixed.test", TARGET)).toEqual({ ok: false, www: false });
-    expect(await checkDns(resolver, "elsewhere.test", TARGET)).toEqual({ ok: false, www: false });
-    expect(await checkDns(resolver, "missing.test", TARGET)).toEqual({ ok: false, www: false });
+    expect(await checkDns(resolver, "ok.test", TARGET, NS)).toEqual({ ok: true, www: true, via: "records" });
+    expect(await checkDns(resolver, "mixed.test", TARGET, NS)).toEqual({ ok: false, www: false });
+    expect(await checkDns(resolver, "elsewhere.test", TARGET, NS)).toEqual({ ok: false, www: false });
+    expect(await checkDns(resolver, "missing.test", TARGET, NS)).toEqual({ ok: false, www: false });
   });
 
   it("never approves anything while our own target does not resolve", async () => {
     dnsMap.set("orphan.test", OURS);
-    expect(await checkDns({ resolve4: async (h) => (h === TARGET ? Promise.reject(new Error("down")) : OURS) }, "orphan.test", TARGET)).toEqual({ ok: false, www: false });
+    expect(await checkDns({ resolve4: async (h) => (h === TARGET ? Promise.reject(new Error("down")) : OURS), resolveNs: async () => Promise.reject(new Error("x")) }, "orphan.test", TARGET, NS)).toEqual({ ok: false, www: false });
+  });
+
+  it("nameservers: approved when they are ours (case and trailing dot ignored), and only ours", async () => {
+    nsMap.set("delegado.test", ["NS1.waycloud.com.br.", "ns2.waycloud.com.br"]);
+    nsMap.set("um.test", ["ns1.waycloud.com.br"]);
+    nsMap.set("misto.test", ["ns1.waycloud.com.br", "ns.cloudflare.com"]);
+    nsMap.set("cloudflare.test", ["ana.ns.cloudflare.com", "bob.ns.cloudflare.com"]);
+    expect(await checkDns(resolver, "delegado.test", TARGET, NS)).toEqual({ ok: true, www: true, via: "ns" });
+    expect(await checkDns(resolver, "um.test", TARGET, NS)).toMatchObject({ ok: true, via: "ns" });
+    expect(await checkDns(resolver, "misto.test", TARGET, NS)).toEqual({ ok: false, www: false }); // a foreign nameserver would answer for some visitors
+    expect(await checkDns(resolver, "cloudflare.test", TARGET, NS)).toEqual({ ok: false, www: false });
+  });
+
+  it("nameserver delegation works even while our A target does not resolve", async () => {
+    const noTarget: Resolver = { resolve4: async () => Promise.reject(new Error("down")), resolveNs: async (h) => (h === "delegado.test" ? NS : Promise.reject(new Error("x"))) };
+    expect(await checkDns(noTarget, "delegado.test", TARGET, NS)).toMatchObject({ ok: true, via: "ns" });
   });
 });
 
@@ -105,11 +126,12 @@ describe("customer flow: request, DNS, agent switch, WHMCS", () => {
     const s = await liveSite();
     const r = await web("", s.token, { dominio: "https://Meusite.com.br/" });
     expect(r.statusCode).toBe(200);
-    const body = r.json() as { status: string; dominio: string; dns: { alvo: string; ip: string; registros: { tipo: string; nome: string; valor: string }[] } };
+    const body = r.json() as { status: string; dominio: string; dns: { alvo: string; ip: string; nameservers: string[]; registros: { tipo: string; nome: string; valor: string }[] } };
     expect([body.status, body.dominio]).toEqual(["waiting_dns", "meusite.com.br"]);
     expect(body.dns.alvo).toBe(TARGET);
     expect(body.dns.registros[0]).toMatchObject({ tipo: "A", nome: "meusite.com.br", valor: OURS[0] }); // the IP is ours, resolved from the target
     expect(body.dns.registros[1]).toMatchObject({ tipo: "CNAME", nome: "www.meusite.com.br", valor: TARGET });
+    expect(body.dns.nameservers).toEqual(NS); // the other way: point the nameservers to us
 
     expect(((await web("/status", s.token)).json() as { status: string }).status).toBe("waiting_dns"); // still not pointing to us
     expect((await agent("/domain-jobs/next")).statusCode).toBe(204); // nothing for the agent yet
@@ -120,7 +142,7 @@ describe("customer flow: request, DNS, agent switch, WHMCS", () => {
     expect((await agent("/domain-jobs/next", TOKEN_B)).statusCode).toBe(204); // another server's agent gets nothing
     const job = await agent("/domain-jobs/next");
     expect(job.statusCode).toBe(200);
-    expect(job.json()).toMatchObject({ domain: "meusite.com.br", old_domain: s.domain, include_www: true });
+    expect(job.json()).toMatchObject({ domain: "meusite.com.br", old_domain: s.domain, include_www: true, dns_mode: "records" });
     const jobId = (job.json() as { job_id: string }).job_id;
     expect((await agent("/domain-jobs/next")).statusCode).toBe(204); // claimed only once
     expect(((await web("/status", s.token)).json() as { status: string }).status).toBe("switching");
@@ -148,7 +170,17 @@ describe("customer flow: request, DNS, agent switch, WHMCS", () => {
     expect((await agent(`/domain-jobs/${jobId}/report`, TOKEN_A, { status: "failed" })).statusCode).toBe(409); // final
   });
 
-  it("a failed switch changes nothing: the site keeps its domain", async () => {
+  it("a domain whose nameservers are ours becomes ready without any A record, and the agent is told to use nameserver mode", async () => {
+    const s = await liveSite();
+    await web("", s.token, { dominio: "novo-ns.test" });
+    expect(((await web("/status", s.token)).json() as { status: string }).status).toBe("waiting_dns");
+    nsMap.set("novo-ns.test", NS); // the customer changed the nameservers at their registrar; no A record answers yet
+    expect(((await web("/status", s.token)).json() as { status: string }).status).toBe("ready");
+    const job = (await agent("/domain-jobs/next")).json() as { domain: string; dns_mode: string; include_www: boolean };
+    expect(job).toMatchObject({ domain: "novo-ns.test", dns_mode: "ns", include_www: true });
+  });
+
+  it("failed switch changes nothing: the site keeps its domain", async () => {
     const s = await liveSite();
     pointToUs("falha.test");
     await web("", s.token, { dominio: "falha.test" });
@@ -201,6 +233,23 @@ describe("customer flow: request, DNS, agent switch, WHMCS", () => {
     const { failStaleSwitches } = await import("../../apps/mcp-service/src/domains.js");
     expect(await failStaleSwitches(db)).toBe(1);
     expect((await statusOf(s2.uuid))!.status).toBe("failed");
+  });
+});
+
+describe("agent diagnostics", () => {
+  it("are accepted from an authenticated agent, logged for the maintainer, size-capped and validated", async () => {
+    const log = vi.spyOn(console, "log").mockImplementation(() => {});
+    const id = "0c16991c-4207-42ec-8577-9dd1ccc900ae";
+    expect((await agent("/diag", TOKEN_A, { job_id: id, kind: "rename_failed", text: "== plesk.log\nerror: something" })).statusCode).toBe(200);
+    const line = JSON.parse(log.mock.calls.flat().find((l) => String(l).includes("agent diag")) as string);
+    expect(line).toMatchObject({ msg: "agent diag", server: "whmcs-18", job: id, kind: "rename_failed" });
+    expect(line.text).toContain("something");
+    log.mockRestore();
+    expect((await agent("/diag", TOKEN_A, { job_id: id, kind: "Bad Kind!", text: "x" })).statusCode).toBe(400);
+    expect((await agent("/diag", TOKEN_A, { job_id: "nope", kind: "ok", text: "x" })).statusCode).toBe(400);
+    expect((await agent("/diag", TOKEN_A, { job_id: id, kind: "ok", text: "x".repeat(20_001) })).statusCode).toBe(400);
+    expect((await agent("/diag", TOKEN_A, { job_id: id, kind: "ok", text: "x", extra: 1 })).statusCode).toBe(400);
+    expect((await post("/agent/v1/diag", { job_id: id, kind: "ok", text: "x" })).statusCode).toBe(401); // no token
   });
 });
 

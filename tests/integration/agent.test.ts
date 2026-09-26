@@ -6,7 +6,7 @@ import { join } from "node:path";
 import type { AddressInfo } from "node:net";
 import { promisify } from "node:util";
 import { strToU8 } from "fflate";
-import { afterAll, beforeAll, describe, expect, it } from "vitest";
+import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
 import type { Envelope, ToolName } from "../../packages/shared/src/index.js";
 import { syncAgentTokens } from "../../apps/mcp-service/src/agent.js";
 import type { Db } from "../../apps/mcp-service/src/db/index.js";
@@ -98,7 +98,7 @@ describe.skipIf(!enabled)("deploy agent (bash, root) against the real service", 
   };
   const statusOf = async (s: { token: string }, id: string) => (await call("status_deploy", { sessao_id: s.token, deploy_id: id })).dados as { status: string; url: string | null; https_ativo: boolean | null };
   const makeDue = (file: string) => dx(`f=/var/lib/waycloud-agent/ssl-pending/${file}; awk '{$4=0; print}' $f > $f.new && mv $f.new $f`); // next attempt: now
-  const dnsOk = { resolve4: async () => ["203.0.113.5"] }; // every name (target, domain, www) points to "us"
+  const dnsOk = { resolve4: async () => ["203.0.113.5"], resolveNs: async () => Promise.reject(new Error("no ns")) }; // every name (target, domain, www) points to "us"
   const doc = (d: string) => `${V}/${d}/httpdocs`;
   const snaps = (d: string) => dx(`ls ${V}/.waycloud-agent/${d}/snapshots 2>/dev/null | wc -l`);
 
@@ -203,15 +203,37 @@ describe.skipIf(!enabled)("deploy agent (bash, root) against the real service", 
       expect(await dxFail(`test -e /var/lib/waycloud-agent/ssl-pending/${dom}@deploy`)).toBe(1); // the second deploy is told as well
     }, 240_000);
 
-    it("a rename that Plesk refuses changes nothing", async () => {
+    it("a rename that Plesk refuses changes nothing, and the agent sends its diagnostics to the service", async () => {
       const dom = "cliente-dois.test";
       const { s } = await readyForSwitch(dom);
+      const log = vi.spyOn(console, "log").mockImplementation(() => {});
       await dx("touch /tmp/plesk-fail-rename");
       expect((await agent()).code).toBe(0);
       await dx("rm -f /tmp/plesk-fail-rename");
+      const diag = log.mock.calls.flat().map(String).filter((l) => l.includes("agent diag")).map((l) => JSON.parse(l) as { kind: string; text: string });
+      log.mockRestore();
+      const text = diag.find((d) => d.kind === "rename_failed")?.text ?? "";
+      expect(text).toContain(`switching ${s.domain} -> ${dom}`); // the tail of the agent's own log says what it was doing
+      expect(text).toContain("report=failed step=rename code=rename_failed");
       expect(await state(s.uuid)).toMatchObject({ status: "failed", error_code: "rename_failed" });
       expect(await subDomain(s.uuid)).toBe(s.domain);
       expect(await dx(`cat ${doc(s.domain)}/index.html`)).toBe(`LIVE-${dom}`); // the site is still where it was
+    }, 240_000);
+
+    it("nameserver mode: the switch runs before any A record exists, and the agent checks that Plesk has the DNS zone", async () => {
+      ctx.resolver = { resolve4: async () => Promise.reject(new Error("no A yet")), resolveNs: async (h) => (h === "cliente-ns.test" ? ctx.settings.nameservers : Promise.reject(new Error("no ns"))) };
+      const s = await site("OLD");
+      await publish(s, { "index.html": "LIVE-NS" });
+      expect((await agent()).code).toBe(0);
+      const r = await requestDomain(ctx, s.uuid, "cliente-ns.test");
+      expect(r.ok, JSON.stringify(r)).toBe(true);
+      expect((await state(s.uuid)).status).toBe("ready");
+      expect((await agent()).code).toBe(0);
+      expect(await state(s.uuid)).toMatchObject({ status: "active" });
+      expect(await dx(`cat ${doc("cliente-ns.test")}/index.html`)).toBe("LIVE-NS");
+      const plesk = await dx("cat /tmp/plesk.log");
+      expect(plesk).toContain("bin dns --info cliente-ns.test"); // the zone check of nameserver mode
+      expect(plesk).toContain("letsencrypt cli.php -d cliente-ns.test -d www.cliente-ns.test"); // www is in our zone
     }, 240_000);
 
     it("if the folder does not move with the rename, Plesk is put back and the site stays as it was", async () => {

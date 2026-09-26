@@ -112,7 +112,7 @@ export function registerWeb(app: FastifyInstance, ctx: ToolContext) {
     https: row.ssl === true,
     mensagem: TEXTO_STATUS[row.status],
     // The records to create are ours (target name and its IP): never built from what the browser sent.
-    ...(row.status === "waiting_dns" ? { dns: dnsInstructions(row.domain, await dnsTarget(ctx.resolver ?? systemResolver, ctx.settings.siteTargetHost)) } : {}),
+    ...(row.status === "waiting_dns" ? { dns: dnsInstructions(row.domain, await dnsTarget(ctx.resolver ?? systemResolver, ctx.settings.siteTargetHost), ctx.settings.nameservers) } : {}),
   });
 
   app.post("/web/domain", { bodyLimit: 4 * 1024 }, async (req, reply) => {

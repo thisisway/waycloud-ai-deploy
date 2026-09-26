@@ -184,6 +184,10 @@ h2 { font-size: 22px; font-weight: 700; letter-spacing: -0.02em; line-height: 1.
 .inline { display: flex; gap: 8px; }
 .inline input { flex: 1; min-width: 0; height: 44px; padding: 0 12px; font: inherit; font-size: 15px; color: var(--ink); background: var(--white); border: 1.5px solid var(--line-strong); border-radius: 10px; }
 .inline input:focus { outline: none; border-color: var(--blue); box-shadow: 0 0 0 3px rgba(29, 102, 255, 0.15); }
+.dns-wrap { display: grid; gap: 16px; margin: 12px 0; }
+.opt h4 { font-size: 14px; font-weight: 700; }
+.opt .note { margin: 4px 0 8px; }
+.opt .warn { color: var(--danger); font-weight: 600; }
 .dns { margin: 12px 0; border: 1px solid var(--line); border-radius: var(--radius); overflow: hidden; }
 .dns-row { display: grid; grid-template-columns: 72px minmax(0, 1fr) auto; gap: 4px 12px; align-items: start; padding: 12px 14px; font-size: 13px; }
 .dns-row + .dns-row { border-top: 1px solid var(--line); }
