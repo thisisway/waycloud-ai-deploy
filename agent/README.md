@@ -28,7 +28,11 @@ bash install.sh --api https://<serviço>/agent/v1 --token <token> --le-email con
 ```
 Leia o `install.sh` antes: ele lista tudo o que cria. Para remover: `bash install.sh --uninstall`.
 
-## Atualizar o agente
+## Atualização automática
+A partir da versão `2026-09-26.01` o agente se atualiza sozinho: a cada 5 minutos, entre um trabalho e outro, ele busca o script no serviço e só instala se **(1)** a assinatura confere com a chave pública embutida nele (a chave privada fica fora do repositório, com o mantenedor), **(2)** a versão é mais nova (uma versão antiga reenviada é recusada), **(3)** o script passa em `bash -n` e no próprio `--selftest`. Depois reinicia sozinho. Para desligar: `WC_AUTOUPDATE=0` em `/etc/waycloud-agent.env`. A versão em uso aparece no início do `journalctl -u waycloud-agent` (`agent started version=...`) e nos logs do serviço (`agent version`).
+Quem mantém o repositório: depois de qualquer mudança em `agent/waycloud-agent.sh` rode `pnpm sign:agent` (o teste `agent-signature` falha se a assinatura estiver velha) e suba a versão `WC_AGENT_VERSION`.
+
+## Atualizar o agente à mão (só na primeira vez, ou se a atualização automática estiver desligada)
 O serviço entrega a versão atual do script (com o mesmo token do agente). No servidor, como root:
 ```
 set -a; . /etc/waycloud-agent.env; set +a
