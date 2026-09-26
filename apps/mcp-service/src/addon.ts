@@ -43,10 +43,20 @@ export interface SignupResult {
   fallbackUrl: string | null;
 }
 
+export interface PixCharge {
+  copyPaste: string;
+  /** data:image/png;base64,... exactly as the gateway produced it */
+  qrImage: string;
+  amountCents: number;
+  expiresAt: string;
+}
+
 export interface AddonClient {
   /** Tells WHMCS the service now lives on the customer's own domain. */
   updateServiceDomain(req: { serviceId: number; domain: string }): Promise<void>;
   registerCheckout(req: { sessionId: string; pid: number; cycle: "monthly" | "annually"; form: SignupForm }): Promise<SignupResult>;
+  /** The Pix of the checkout's invoice (only for the session that made it); null when there is none to show. */
+  pixCharge(req: { sessionId: string; checkoutId: number }): Promise<PixCharge | null>;
   createCheckout(req: { sessionId: string; pid: number; cycle: "monthly" | "annually" }): Promise<{ checkoutId: number; url: string; expiresAt: string }>;
   plans(): Promise<AddonPlan[]>;
 }
@@ -59,6 +69,7 @@ const signupResponse = z.object({
   checkout_id: z.number().int().nullable(),
   fallback_url: z.string().url().nullable(),
 });
+const pixResponse = z.object({ ok: z.boolean(), copy_paste: z.string().optional(), qr_image: z.string().optional(), amount_cents: z.number().int().optional(), expires_at: z.string().optional() });
 const plansResponse = z.object({
   plans: z.array(z.object({ type: z.enum(["static", "php"]), pid: z.number().int(), name: z.string(), monthly_cents: z.number().int(), annual_cents: z.number().int() })),
 });
@@ -111,6 +122,14 @@ export function httpAddonClient(cfg: AddonConfig): AddonClient {
       // Both links are opened by the customer: they must live on the WHMCS we called, never somewhere else.
       for (const url of [d.redirect, d.fallback_url]) if (url && new URL(url).host !== new URL(cfg.url).host) throw new AddonError("unexpected_host", 200);
       return { ok: d.ok, errors: Array.isArray(d.errors) ? {} : d.errors, redirect: d.redirect, checkoutId: d.checkout_id, fallbackUrl: d.fallback_url };
+    },
+
+    async pixCharge(r) {
+      const parsed = pixResponse.safeParse(await call({ action: "pix_charge", session_id: r.sessionId, checkout_id: r.checkoutId }));
+      if (!parsed.success) throw new AddonError("bad_response", 200);
+      const d = parsed.data;
+      if (!d.ok || !d.copy_paste || d.amount_cents === undefined) return null;
+      return { copyPaste: d.copy_paste, qrImage: d.qr_image ?? "", amountCents: d.amount_cents, expiresAt: d.expires_at ?? "" };
     },
 
     async createCheckout(r) {

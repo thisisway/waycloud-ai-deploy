@@ -73,6 +73,7 @@ export function registerWeb(app: FastifyInstance, ctx: ToolContext) {
   const perIp = new RateLimit(10 * 60_000);
   const perSession = new RateLimit(10 * 60_000);
   const overall = new RateLimit(60 * 60_000);
+  const pixPerSession = new RateLimit(10 * 60_000);
   for (const [path, { file, type, immutable }] of Object.entries(PAGES)) {
     let body: Buffer;
     try {
@@ -166,6 +167,29 @@ export function registerWeb(app: FastifyInstance, ctx: ToolContext) {
     const session = await findSession(ctx.db, b.data.sessao_id);
     if (!session) return send(401, erro("SESSAO_INVALIDA"));
     return send(200, { ok: true, cancelado: await cancelDomainRequest(ctx.db, session.id) });
+  });
+
+  // The Pix of the invoice, so the page shows the QR code itself. Only the session that signed up can ask, and only for its last checkout.
+  app.post("/web/pix", { bodyLimit: 2 * 1024 }, async (req, reply) => {
+    const send = (status: number, body: object) => reply.code(status).header("cache-control", "no-store").send(body);
+    const b = sessionOnly.safeParse(req.body);
+    if (!b.success) return send(400, erro("ENTRADA_INVALIDA"));
+    if (pixPerSession.tooMany(b.data.sessao_id, 30)) return send(429, erro("LIMITE_EXCEDIDO"));
+    const session = await findSession(ctx.db, b.data.sessao_id);
+    if (!session) return send(401, erro("SESSAO_INVALIDA"));
+    if (!ctx.addon) return send(200, { ok: false });
+    const ref = await ctx.db.query<{ checkout_id: string }>("SELECT checkout_id FROM checkout_refs WHERE session_id = $1 ORDER BY created_at DESC LIMIT 1", [session.id]);
+    const checkoutId = Number(ref[0]?.checkout_id);
+    if (!Number.isInteger(checkoutId)) return send(200, { ok: false });
+    try {
+      const pix = await ctx.addon.pixCharge({ sessionId: session.id, checkoutId });
+      if (!pix) return send(200, { ok: false });
+      // The image goes into an <img src>: accept only a PNG data URL of sane size.
+      const qr = /^data:image\/png;base64,[A-Za-z0-9+/=]+$/.test(pix.qrImage) && pix.qrImage.length < 40_000 ? pix.qrImage : null;
+      return send(200, { ok: true, copia_cola: pix.copyPaste.slice(0, 1000), qr, valor_centavos: pix.amountCents, expira_em: pix.expiresAt });
+    } catch {
+      return send(200, { ok: false }); // the page falls back to the invoice link
+    }
   });
 
   app.post("/web/checkout", { bodyLimit: 16 * 1024 }, async (req, reply) => {

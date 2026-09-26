@@ -61,6 +61,8 @@ final class Api
                     return [200, $this->checkout->updateServiceDomain($data)];
                 case 'register_checkout':
                     return [200, $this->checkout->registerFromWeb($data)];
+                case 'pix_charge':
+                    return [200, $this->checkout->pixCharge($data)];
                 case 'plans':
                     return [200, ['plans' => $this->plans()]];
                 default:

@@ -218,6 +218,14 @@ final class FakeWhmcs implements WhmcsApi
         }
     }
 
+    public ?array $pix = ['copy_paste' => '000201PIXCODE', 'qr_image' => 'data:image/png;base64,AAAA', 'amount_cents' => 3590, 'expires_at' => '2026-09-29 12:00:00'];
+
+    public function pixCharge(int $invoiceId): ?array
+    {
+        $this->calls[] = ['pix', [$invoiceId]];
+        return $this->pix;
+    }
+
     public function createSsoUrl(int $clientId, string $path): ?string
     {
         $this->calls[] = ['sso', [$clientId, $path]];

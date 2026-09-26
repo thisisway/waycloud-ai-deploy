@@ -105,6 +105,26 @@ final class LocalWhmcsApi implements WhmcsApi
         });
     }
 
+    public function pixCharge(int $invoiceId): ?array
+    {
+        $inv = Capsule::table('tblinvoices')->where('id', $invoiceId)->first(['status', 'paymentmethod']);
+        if ($inv === null || $inv->status !== 'Unpaid' || $inv->paymentmethod !== 'efipix') {
+            return null;
+        }
+        try {
+            $invoice = new \WHMCS\Invoice($invoiceId);
+            $invoice->getData();
+            $invoice->getPaymentLink(); // the gateway creates (or reuses) the charge while building its payment box
+        } catch (\Throwable) {
+            return null;
+        }
+        $c = Capsule::table('mod_efipix_charges')->where('invoice_id', $invoiceId)->where('status', 'ATIVA')->orderBy('id', 'desc')->first();
+        if ($c === null || (string) $c->copy_paste === '') {
+            return null;
+        }
+        return ['copy_paste' => (string) $c->copy_paste, 'qr_image' => (string) $c->qr_image, 'amount_cents' => (int) round(((float) $c->amount) * 100), 'expires_at' => (string) $c->expires_at];
+    }
+
     public function createSsoUrl(int $clientId, string $path): ?string
     {
         try {

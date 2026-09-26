@@ -1,4 +1,4 @@
-import { Api, brl, checkForm, ensureSession, maskDoc, maskPhone, postJson, sendZip, signup } from "./flow.js";
+import { Api, brl, checkForm, ensureSession, getPix, maskDoc, maskPhone, postJson, sendZip, signup } from "./flow.js";
 import { startRibbons } from "./ribbons.js";
 
 const $ = (id) => document.getElementById(id);
@@ -203,7 +203,9 @@ async function submitSignup(event) {
   const r = await signup(api, { sessao_id: state.sessao_id, plano_pid: chosen.pid, ciclo: cycle, ...values, nome: values.nome.trim(), email: values.email.trim(), website: f.website.value });
   if (r.ok) {
     save({ stage: "waiting", checkout_url: r.redirect });
-    location.assign(r.redirect); // the payment page; the visitor comes back here and this page carries on by itself
+    // The Pix is shown right here; without one (card only, a hiccup) the visitor goes to the payment page and comes back by themselves.
+    if (await showWaiting(true)) return;
+    location.assign(r.redirect);
     return;
   }
   button.disabled = false;
@@ -219,11 +221,37 @@ async function submitSignup(event) {
 }
 
 // ---- 3. payment -> publish ----------------------------------------------------------------
-function showWaiting() {
+/** Shows the payment step; resolves to true when the Pix is on screen. With `onlyWithPix` nothing changes when there is no Pix. */
+async function showWaiting(onlyWithPix = false) {
   $("checkout-link").href = state.checkout_url;
+  const pix = await getPix(api, state.sessao_id);
+  if (!pix && onlyWithPix) return false;
+  $("pix").hidden = !pix;
+  if (pix) {
+    $("wait-title").textContent = "Pague com Pix";
+    $("wait-msg").textContent = "Assim que o pagamento for confirmado, a publicação do seu site começa sozinha. Não precisa sair desta página.";
+    $("pix-amount").textContent = brl(pix.valor_centavos);
+    $("pix-code").value = pix.copia_cola;
+    $("pix-qr").hidden = !pix.qr;
+    if (pix.qr) $("pix-qr").src = pix.qr;
+    $("checkout-link").textContent = "Prefere pagar com cartão ou boleto? Abrir a fatura";
+  }
   view(3, "s-wait");
   void waitPayment();
+  return pix !== null;
 }
+
+$("pix-copy").addEventListener("click", async () => {
+  const code = $("pix-code");
+  try {
+    await navigator.clipboard.writeText(code.value);
+  } catch {
+    code.select(); // no clipboard permission: the code is selected so the visitor can copy it by hand
+    document.execCommand("copy");
+  }
+  $("pix-copy").textContent = "Código copiado";
+  setTimeout(() => ($("pix-copy").textContent = "Copiar código"), 2500);
+});
 
 async function waitPayment() {
   const me = ++run;
@@ -575,7 +603,7 @@ $("cli-prompt").textContent = `Quero publicar este site na Way Cloud. Leia ${loc
 // Resume where the visitor left off (for instance after paying in the other tab).
 try {
   if (state.stage === "plans") await showPlans();
-  else if (state.stage === "waiting" && state.checkout_url) showWaiting();
+  else if (state.stage === "waiting" && state.checkout_url) void showWaiting();
   else if (state.stage === "deploy" && state.deploy_id) (view(4, "s-deploy"), void follow());
   else if (state.stage === "done" && state.site_url) (showDone(), state.https === false && void waitHttps());
   else view(1, "s-upload");

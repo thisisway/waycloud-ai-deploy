@@ -63,6 +63,22 @@ final class Checkout
     }
 
     /**
+     * The Pix of the invoice of an AI checkout, so the public page can show the QR code without sending the customer to WHMCS.
+     * @param array<string,mixed> $req checkout_id, session_id (only the session that made the checkout gets it)
+     * @return array<string,mixed> {ok:false} when there is no Pix to show (the page then falls back to the invoice link)
+     */
+    public function pixCharge(array $req): array
+    {
+        $id = filter_var($req['checkout_id'] ?? null, FILTER_VALIDATE_INT);
+        $row = $id === false || $id <= 0 ? null : $this->store->findCheckoutBy('id', $id);
+        if ($row === null || !hash_equals((string) $row['session_id'], (string) ($req['session_id'] ?? '')) || (int) ($row['invoice_id'] ?? 0) <= 0) {
+            throw new ApiException('unknown_checkout', 404);
+        }
+        $pix = $this->whmcs->pixCharge((int) $row['invoice_id']);
+        return $pix === null ? ['ok' => false] : ['ok' => true] + $pix;
+    }
+
+    /**
      * The customer connected their own domain and the site now lives on it: WHMCS must follow, or its Plesk module
      * (suspend, terminate...) would look for the old name. Only services that came from an AI checkout can be touched.
      * @param array<string,mixed> $req service_id, domain

@@ -13,6 +13,9 @@ let ctx: ToolContext;
 let app: ReturnType<typeof buildApp>;
 let calls: Req[] = [];
 let answer: () => Promise<SignupResult>;
+let pixCalls: Parameters<AddonClient["pixCharge"]>[0][] = [];
+let pixAnswer: () => Promise<Awaited<ReturnType<AddonClient["pixCharge"]>>>;
+const QR = "data:image/png;base64,iVBORw0KGgo=";
 
 const REDIRECT = "https://app.test/sso/abc";
 const success = async (): Promise<SignupResult> => ({ ok: true, errors: {}, redirect: REDIRECT, checkoutId: 77, fallbackUrl: null });
@@ -30,6 +33,10 @@ beforeAll(async () => {
     },
     plans: async () => [],
     updateServiceDomain: async () => {},
+    pixCharge: async (r) => {
+      pixCalls.push(r);
+      return pixAnswer();
+    },
   };
   ctx = { ...base.ctx, addon };
   app = buildApp(ctx);
@@ -40,7 +47,9 @@ afterAll(async () => {
 });
 beforeEach(() => {
   calls = [];
+  pixCalls = [];
   answer = success;
+  pixAnswer = async () => ({ copyPaste: "000201PIX", qrImage: QR, amountCents: 3590, expiresAt: "2026-09-29 12:00:00" });
 });
 
 const newSession = async () => ((await TOOLS.find((t) => t.name === "iniciar_sessao")!.handler(ctx, {} as never)).dados as { sessao_id: string }).sessao_id;
@@ -139,5 +148,39 @@ describe("addon client: the links it returns must live on the WHMCS host", () =>
       const c = httpAddonClient({ url: "https://app.test/modules/addons/waycloud_ai/api.php", secret: "s".repeat(40), fetchFn: respond(reply(over)) });
       await expect(c.registerCheckout(req)).rejects.toMatchObject({ code: "unexpected_host" });
     }
+  });
+});
+
+describe("POST /web/pix", () => {
+  const pix = (sessao_id: string) => app.inject({ method: "POST", url: "/web/pix", payload: { sessao_id } });
+
+  it("gives the session its Pix, asking the addon for the checkout that session made", async () => {
+    const body = await valid();
+    await post(body);
+    const r = await pix(body.sessao_id);
+    expect([r.statusCode, r.json()]).toEqual([200, { ok: true, copia_cola: "000201PIX", qr: QR, valor_centavos: 3590, expira_em: "2026-09-29 12:00:00" }]);
+    expect(r.headers["cache-control"]).toBe("no-store");
+    expect(pixCalls).toEqual([{ sessionId: (await findSession(ctx.db, body.sessao_id))!.id, checkoutId: 77 }]);
+  });
+
+  it("answers ok:false (the page falls back to the invoice link) when there is no checkout, no Pix or the addon fails", async () => {
+    const body = await valid();
+    expect((await pix(body.sessao_id)).json()).toEqual({ ok: false }); // signed nothing up yet
+    await post(body);
+    pixAnswer = async () => null;
+    expect((await pix(body.sessao_id)).json()).toEqual({ ok: false });
+    pixAnswer = async () => {
+      throw new AddonError("unreachable", 0);
+    };
+    expect((await pix(body.sessao_id)).json()).toEqual({ ok: false });
+  });
+
+  it("never passes on an image that is not a small PNG data URL, and rejects unknown sessions and bad input", async () => {
+    const body = await valid();
+    await post(body);
+    pixAnswer = async () => ({ copyPaste: "000201PIX", qrImage: "javascript:alert(1)", amountCents: 100, expiresAt: "" });
+    expect((await pix(body.sessao_id)).json()).toMatchObject({ ok: true, qr: null });
+    expect((await pix("6f1c2d3e-0000-4000-8000-0123456789ab")).statusCode).toBe(401);
+    expect((await app.inject({ method: "POST", url: "/web/pix", payload: { sessao_id: "x" } })).statusCode).toBe(400);
   });
 });

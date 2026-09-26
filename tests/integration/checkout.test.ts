@@ -29,6 +29,7 @@ beforeAll(async () => {
       throw new Error("unused");
     },
     updateServiceDomain: async () => {},
+    pixCharge: async () => null,
   };
   ctx = { ...t.ctx, addon };
 });

@@ -25,6 +25,12 @@ interface WhmcsApi
     /** Sends the customer the "define your password" e-mail. @throws WhmcsApiError */
     public function sendPasswordReset(string $email): void;
 
+    /**
+     * The Pix charge of an unpaid invoice that uses the Efí Pix gateway, created on the spot (the gateway makes it when it shows the invoice).
+     * @return array{copy_paste:string, qr_image:string, amount_cents:int, expires_at:string}|null null when the invoice has no Pix
+     */
+    public function pixCharge(int $invoiceId): ?array;
+
     /** Logged-in URL for the client, landing on $path (e.g. "viewinvoice.php?id=10"). */
     public function createSsoUrl(int $clientId, string $path): ?string;
 

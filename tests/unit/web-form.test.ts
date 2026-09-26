@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 // @ts-expect-error plain ESM served to the browser, without type declarations
-import { checkForm, maskDoc, maskPhone, signup } from "../../apps/mcp-service/public/flow.js";
+import { checkForm, maskDoc, maskPhone, getPix, signup } from "../../apps/mcp-service/public/flow.js";
 
 describe("input masks", () => {
   it.each([
@@ -62,5 +62,18 @@ describe("signup()", () => {
     await signup({ base: "http://x", fetch: async (url: string, init: RequestInit) => ((seen = { url, init }), new Response("{}", { status: 400 })) }, { a: 1 });
     expect(seen!.url).toBe("http://x/web/checkout");
     expect([seen!.init.method, seen!.init.body]).toEqual(["POST", '{"a":1}']);
+  });
+});
+
+describe("getPix()", () => {
+  const withBody = (status: number, body: object) => ({ base: "http://x", fetch: async () => new Response(JSON.stringify(body), { status }) });
+  it("returns the Pix the service found", async () => {
+    const pix = { ok: true, copia_cola: "000201", qr: "data:image/png;base64,AA==", valor_centavos: 3590 };
+    expect(await getPix(withBody(200, pix), "s")).toEqual(pix);
+  });
+  it("is null when there is none, on errors and on network failures (the page then uses the invoice link)", async () => {
+    expect(await getPix(withBody(200, { ok: false }), "s")).toBeNull();
+    expect(await getPix(withBody(401, { ok: true, copia_cola: "x" }), "s")).toBeNull();
+    expect(await getPix({ base: "http://x", fetch: async () => Promise.reject(new Error("offline")) }, "s")).toBeNull();
   });
 });

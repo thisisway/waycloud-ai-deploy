@@ -609,6 +609,17 @@ test('API action update_service_domain is signed like the others', function () u
     eq([404, ['error' => 'unknown_service']], $call($e, ['action' => 'update_service_domain', 'service_id' => 1, 'domain' => 'novo.com.br']));
 });
 
+test('API action pix_charge gives the Pix only to the session that made the checkout', function () use ($call, $web, $validWeb) {
+    $e = make();
+    $e['checkout']->registerFromWeb($web($validWeb));
+    [$st, $r] = $call($e, ['action' => 'pix_charge', 'checkout_id' => 1, 'session_id' => SESSION]);
+    eq([200, true, '000201PIXCODE', 3590], [$st, $r['ok'], $r['copy_paste'], $r['amount_cents']]);
+    eq([404, ['error' => 'unknown_checkout']], $call($e, ['action' => 'pix_charge', 'checkout_id' => 1, 'session_id' => '11111111-1111-4111-8111-111111111111']));
+    eq([404, ['error' => 'unknown_checkout']], $call($e, ['action' => 'pix_charge', 'checkout_id' => 99, 'session_id' => SESSION]));
+    $e['whmcs']->pix = null; // e.g. the invoice uses another gateway: the page falls back to the invoice link
+    eq([200, ['ok' => false]], $call($e, ['action' => 'pix_charge', 'checkout_id' => 1, 'session_id' => SESSION]));
+});
+
 echo "\nInvoice page banner\n";
 test('AI invoices get the way back; paid ones also redirect; other invoices and pages get nothing', function () use ($web, $validWeb) {
     $e = make();

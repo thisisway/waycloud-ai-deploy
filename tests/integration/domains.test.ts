@@ -40,6 +40,7 @@ beforeAll(async () => {
   const addon = {
     plans: async () => [], createCheckout: async () => { throw new Error("unused"); }, registerCheckout: async () => { throw new Error("unused"); },
     updateServiceDomain: async (r) => { if (syncFails > 0) { syncFails--; throw Object.assign(new Error("x"), { code: "unreachable" }); } synced.push(r); },
+    pixCharge: async () => null,
   } as AddonClient;
   ctx = { ...t.ctx, addon, resolver };
   app = buildApp(ctx);

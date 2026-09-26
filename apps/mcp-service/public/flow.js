@@ -101,6 +101,15 @@ export async function signup(api, payload) {
   return { ok: false, status: res.status, errors: body.errors ?? {}, fallbackUrl: body.fallback_url ?? null, mensagem: body.mensagem_para_usuario ?? null };
 }
 
+/**
+ * The Pix of the order, to show the QR code on this page. Resolves to { copia_cola, qr, valor_centavos } or null when there is
+ * none (another payment method, not signed up yet, a hiccup): the page then sends the visitor to the invoice as before.
+ */
+export async function getPix(api, sessaoId) {
+  const r = await postJson(api, "/web/pix", { sessao_id: sessaoId });
+  return r.status === 200 && r.body.ok === true && r.body.copia_cola ? r.body : null;
+}
+
 /** POSTs JSON to the service. Never throws: a network failure is { status: 0, body: {} }. */
 export async function postJson(api, path, payload) {
   try {

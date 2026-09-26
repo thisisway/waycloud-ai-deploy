@@ -132,8 +132,19 @@
         </section>
 
         <section id="s-wait" class="block" hidden>
-          <h2>Aguardando o pagamento</h2>
+          <h2 id="wait-title">Aguardando o pagamento</h2>
           <p id="wait-msg" class="sub">Se você ainda não pagou, siga para o pagamento (Pix ou cartão). Depois é só voltar a esta página: a publicação começa sozinha assim que for confirmado.</p>
+          <div id="pix" class="pix" hidden>
+            <img id="pix-qr" class="pix-qr" alt="QR Code do Pix" width="180" height="180">
+            <div class="pix-side">
+              <p class="pix-amount">Valor: <strong id="pix-amount"></strong></p>
+              <p class="note">Abra o app do seu banco, escolha pagar com Pix e leia o QR Code. No celular, copie o código abaixo e use "Pix copia e cola".</p>
+              <div class="pix-code">
+                <input id="pix-code" type="text" readonly aria-label="Código Pix copia e cola">
+                <button id="pix-copy" type="button" class="btn line">Copiar código</button>
+              </div>
+            </div>
+          </div>
           <div class="bar-load" aria-hidden="true"><span></span></div>
           <p><a id="checkout-link" class="btn line">Ir para o pagamento</a></p>
         </section>
