@@ -65,14 +65,49 @@ has_le_cert() { # is the certificate served for $1 issued by Let's Encrypt?
   [[ "$issuer" == *"Let's Encrypt"* ]]
 }
 
+# Plesk creates every site with "redirect HTTP to HTTPS" on. Without a valid certificate that redirect makes the site
+# unreachable (and blocks the Let's Encrypt check itself), so it stays off until the certificate is there.
+set_redirect() { # set_redirect DOMAIN true|false
+  "$WC_PLESK" bin site --update "$1" -ssl-redirect "$2" >> "$WC_STATE/plesk.log" 2>&1 || true
+}
+
 ensure_ssl() { # prints true|false. A missing certificate never fails a deploy: the site is live over HTTP meanwhile.
   local domain=$1
-  if has_le_cert "$domain"; then echo true; return; fi
+  if has_le_cert "$domain"; then set_redirect "$domain" true; echo true; return; fi
+  set_redirect "$domain" false
   if [ "$WC_SSL_MODE" = auto ] && [ -n "$WC_LE_EMAIL" ]; then
     timeout 180 "$WC_PLESK" bin extension --exec letsencrypt cli.php -d "$domain" -m "$WC_LE_EMAIL" >> "$WC_STATE/letsencrypt.log" 2>&1 || true
-    has_le_cert "$domain" && { echo true; return; }
+    if has_le_cert "$domain"; then set_redirect "$domain" true; echo true; return; fi
   fi
   echo false
+}
+
+# Sites still waiting for a certificate (DNS not there yet, Let's Encrypt limits...) are retried with growing pauses, for 24 h.
+SSL_DELAYS=(120 300 600 1200 2400 3600)
+mark_ssl_pending() { # mark_ssl_pending JOB DOMAIN
+  local now; now=$(date +%s)
+  mkdir -p "$WC_STATE/ssl-pending"
+  echo "$1 $now 0 $(( now + SSL_DELAYS[0] ))" > "$WC_STATE/ssl-pending/$2"
+}
+
+retry_ssl() {
+  local f domain id first tries next now delay
+  now=$(date +%s)
+  for f in "$WC_STATE"/ssl-pending/*; do
+    [ -f "$f" ] || continue
+    domain=$(basename "$f")
+    read -r id first tries next < "$f" || continue
+    if (( now - first > 86400 )); then log "ssl: giving up on $domain after 24 hours"; rm -f "$f"; continue; fi
+    (( now < next )) && continue
+    if [ "$(ensure_ssl "$domain")" = true ]; then
+      log "ssl: certificate ready for $domain"
+      rm -f "$f"
+      report "$id" published ssl_ready "" true
+    else
+      tries=$(( tries + 1 )); delay=${SSL_DELAYS[$(( tries < 5 ? tries : 5 ))]}
+      echo "$id $first $tries $(( now + delay ))" > "$f"
+    fi
+  done
 }
 
 local_check() { # 2xx from this very server (Host header + --resolve), independent of public DNS and certificates
@@ -151,6 +186,7 @@ deploy() { # deploy JOB-JSON-FILE
   local_check "$domain" || { restore check local_check_failed; return; }
 
   local ssl; ssl=$(ensure_ssl "$domain")
+  if [ "$ssl" = true ]; then rm -f "$WC_STATE/ssl-pending/$domain"; else mark_ssl_pending "$id" "$domain"; fi
   prune "$work/snapshots" "$keep"
   report "$id" published finished "" "$ssl"
 }
@@ -162,6 +198,7 @@ main() {
   log "agent started api=$WC_API"
   local backoff=0
   while true; do
+    retry_ssl
     local http; http=$(api POST /jobs/next)
     case "$http" in
       200) backoff=0; deploy "$BODY"; [ "$WC_ONCE" = 1 ] && exit 0; continue ;;

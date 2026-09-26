@@ -279,12 +279,37 @@ async function follow() {
     setStage(STAGE_OF[s.dados.status] ?? 0);
     if (s.dados.intervalo_sugerido_segundos === 0) {
       if (s.dados.status !== "publicado") return showAlert(s.mensagem_para_usuario);
-      const v = await api.tool("verificar_site", { sessao_id: state.sessao_id });
-      save({ stage: "done", site_url: s.dados.url });
-      return showDone(v.mensagem_para_usuario);
+      const secure = s.dados.https_ativo === true;
+      // Without the certificate yet the site is up over HTTP: no point running the check that would flag the missing padlock.
+      const v = secure ? await api.tool("verificar_site", { sessao_id: state.sessao_id }) : null;
+      save({ stage: "done", site_url: s.dados.url, https: secure });
+      showDone(v?.mensagem_para_usuario);
+      return secure ? undefined : waitHttps();
     }
     await sleep(Math.max(2, s.dados.intervalo_sugerido_segundos) * 1000);
   }
+}
+
+const HTTPS_PENDING_NOTE = "Estamos ativando o HTTPS do seu site. Em alguns minutos o endereço passa a abrir com cadeado, e esta página avisa quando estiver pronto.";
+
+/** The certificate can take a few minutes after the site is live: keep checking, for up to 30 minutes. */
+async function waitHttps() {
+  const me = ++run;
+  for (let i = 0; i < 60 && me === run; i++) {
+    await sleep(30_000);
+    let s;
+    try {
+      s = await api.tool("status_deploy", { sessao_id: state.sessao_id, deploy_id: state.deploy_id });
+    } catch {
+      continue; // a network blip
+    }
+    if (s.ok && s.dados?.https_ativo === true) {
+      const v = await api.tool("verificar_site", { sessao_id: state.sessao_id });
+      save({ site_url: s.dados.url, https: true });
+      return showDone(v.mensagem_para_usuario);
+    }
+  }
+  $("deploy-note").textContent = "O HTTPS está demorando mais que o normal. O seu site já abre; se o cadeado não aparecer em algumas horas, fale com a gente pelo chat.";
 }
 
 function showDone(note) {
@@ -297,7 +322,7 @@ function showDone(note) {
   link.href = state.site_url;
   link.replaceChildren(document.createTextNode(`Abrir ${state.site_url.replace(/^https?:\/\//, "")}`), icon("external"));
   $("deploy-done").hidden = false;
-  $("deploy-note").textContent = note ?? "";
+  $("deploy-note").textContent = state.https === false ? HTTPS_PENDING_NOTE : (note ?? "");
 }
 
 // ---- wiring -------------------------------------------------------------------------------
@@ -360,7 +385,7 @@ try {
   if (state.stage === "plans") await showPlans();
   else if (state.stage === "waiting" && state.checkout_url) showWaiting();
   else if (state.stage === "deploy" && state.deploy_id) (view(4, "s-deploy"), void follow());
-  else if (state.stage === "done" && state.site_url) showDone();
+  else if (state.stage === "done" && state.site_url) (showDone(), state.https === false && void waitHttps());
   else view(1, "s-upload");
 } catch (e) {
   view(1, "s-upload");

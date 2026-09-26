@@ -120,6 +120,23 @@ describe("publicar", () => {
     expect(Buffer.from(unzipSync(storage.objects.get(d2!.package_key)!)[".htaccess"]!).toString()).toBe("# mine");
   });
 
+  it("a certificate that arrives after the site went live upgrades ssl once, and only to true", async () => {
+    await drainQueue(); // the claim below must get this deploy
+    const s = await paidSession("whmcs-18");
+    const id = deployId(await publish(s.token, STATIC));
+    await job(TOKEN_A);
+    await report(id, { status: "validating" });
+    expect((await report(id, { status: "published", ssl: false })).statusCode).toBe(200);
+    expect(await statusOf(s.token, id)).toMatchObject({ dados: { status: "publicado", https_ativo: false } });
+
+    expect((await report(id, { status: "published", ssl: false })).statusCode).toBe(409); // not an upgrade
+    expect((await report(id, { status: "published" })).statusCode).toBe(409);
+    expect((await report(id, { status: "published", ssl: true }, TOKEN_B)).statusCode).toBe(404); // another server's agent
+    expect((await report(id, { status: "published", ssl: true })).statusCode).toBe(200);
+    expect(await statusOf(s.token, id)).toMatchObject({ dados: { status: "publicado", https_ativo: true } });
+    expect((await report(id, { status: "failed" })).statusCode).toBe(409); // still final
+  });
+
   it("PHP: carries the PHP version and no SPA fallback", async () => {
     const s = await paidSession();
     const r = await publish(s.token, { "index.php": "<?php echo 1;", "composer.json": JSON.stringify({ require: { php: "^8.1" } }) });

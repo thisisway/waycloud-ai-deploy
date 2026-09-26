@@ -116,6 +116,32 @@ describe.skipIf(!enabled)("deploy agent (bash, root) against the real service", 
     expect(await statusOf(s, id)).toEqual({ status: "publicado", url: `http://${s.domain}`, https_ativo: false, intervalo_sugerido_segundos: 0 });
   }, 120_000);
 
+  it("without a certificate the HTTP->HTTPS redirect stays off and the site is retried; once the certificate exists the redirect turns on and the service is told", async () => {
+    const s = await site("OLD");
+    const id = await publish(s, { "index.html": "NEW-SSL" });
+    expect((await agent()).code).toBe(0);
+    const plesk = () => dx("cat /tmp/plesk.log");
+    expect(await plesk()).toContain(`bin site --update ${s.domain} -ssl-redirect false`); // a redirect to a missing certificate would lock visitors out
+    expect(await plesk()).not.toContain(`${s.domain} -ssl-redirect true`);
+    expect(await dx(`cat /var/lib/waycloud-agent/ssl-pending/${s.domain}`)).toMatch(new RegExp(`^${id} \\d+ 0 \\d+$`));
+    expect(await statusOf(s, id)).toMatchObject({ https_ativo: false });
+
+    // Not due yet: another poll changes nothing.
+    expect((await agent()).code).toBe(0);
+    expect(await dxFail(`test -e /var/lib/waycloud-agent/ssl-pending/${s.domain}`)).toBe(0);
+
+    // The certificate shows up (a self-signed one whose issuer is "Let's Encrypt") and the retry becomes due.
+    await dx(`openssl req -x509 -newkey rsa:2048 -nodes -keyout /tmp/le.key -out /tmp/le.crt -days 1 -subj "/O=Let's Encrypt/CN=${s.domain}" 2>/dev/null`);
+    await dx(`(openssl s_server -accept 8443 -cert /tmp/le.crt -key /tmp/le.key -www >/tmp/s_server.log 2>&1 &) ; sleep 1`);
+    await dx(`sed -i 's/ [0-9]*$/ 0/' /var/lib/waycloud-agent/ssl-pending/${s.domain}`); // next attempt: now
+    expect((await agent()).code).toBe(0);
+    await dx("pkill -x openssl || true");
+
+    expect(await plesk()).toContain(`bin site --update ${s.domain} -ssl-redirect true`);
+    expect(await dxFail(`test -e /var/lib/waycloud-agent/ssl-pending/${s.domain}`)).toBe(1); // no longer pending
+    expect(await statusOf(s, id)).toMatchObject({ https_ativo: true, url: `https://${s.domain}` });
+  }, 180_000);
+
   it("a corrupted package (hash mismatch) fails before touching the live site", async () => {
     const s = await site("KEEP-ME");
     const id = await publish(s, { "index.html": "EVIL" });

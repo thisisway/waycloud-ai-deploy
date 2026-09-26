@@ -28,6 +28,17 @@ bash install.sh --api https://<serviço>/agent/v1 --token <token> --le-email con
 ```
 Leia o `install.sh` antes: ele lista tudo o que cria. Para remover: `bash install.sh --uninstall`.
 
+## Atualizar o agente
+O serviço entrega a versão atual do script (com o mesmo token do agente). No servidor, como root:
+```
+set -a; . /etc/waycloud-agent.env; set +a
+curl -fsS -H "Authorization: Bearer $WC_TOKEN" "$WC_API/waycloud-agent.sh" -o /tmp/wc-agent.sh   && bash -n /tmp/wc-agent.sh && install -m 750 /tmp/wc-agent.sh /opt/waycloud/waycloud-agent.sh   && systemctl restart waycloud-agent
+```
+
+## Certificado (HTTPS)
+O Plesk cria todo site com "redirecionar HTTP para HTTPS" ligado. Sem certificado válido isso deixa o site inacessível (e trava a própria validação do Let's Encrypt). Por isso o agente **desliga o redirecionamento** enquanto não há certificado do Let's Encrypt, pede o certificado e só então liga o redirecionamento de volta (`plesk bin site --update <domínio> -ssl-redirect true|false`).
+Se o certificado não sair na hora (DNS ainda não propagou, limite do Let's Encrypt...), o domínio entra em `/var/lib/waycloud-agent/ssl-pending/` e é tentado de novo com pausas crescentes (2, 5, 10, 20, 40 e 60 minutos) por até 24 horas. Quando sai, o agente avisa o serviço e a página do cliente mostra o HTTPS ativo.
+
 ## Voltar a versão anterior à mão
 ```
 D=/var/www/vhosts/<domínio>; S=$D/../.waycloud-agent/<domínio>/snapshots

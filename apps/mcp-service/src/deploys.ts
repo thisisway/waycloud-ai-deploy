@@ -96,6 +96,12 @@ export async function reportJob(db: Db, serverId: string, deployId: string, r: A
     [deployId, serverId],
   );
   if (!row) return "not_found"; // also covers jobs that belong to another server
+  // The certificate can arrive after the site went live (the agent keeps retrying): one more report, only ever false/unknown -> true.
+  if (row.status === "published" && r.status === "published") {
+    if (r.ssl !== true) return "bad_transition";
+    await db.query("UPDATE deploys SET ssl = true WHERE id = $1 AND status = 'published'", [deployId]);
+    return "ok";
+  }
   if (!NEXT[row.status]?.includes(r.status)) return "bad_transition";
   const terminal = r.status !== "validating";
   const [changed] = await db.query(

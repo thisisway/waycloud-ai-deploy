@@ -313,3 +313,7 @@ O cliente não sai mais do `waypreview.com.br` para se cadastrar: a etapa "Seus 
 - Depois de pagar, a fatura mostra "Voltar para a Way Cloud" (e volta sozinha quando está paga). A página retoma de onde parou (o estado da compra fica no `localStorage`, os dados pessoais nunca) e publica assim que o pedido fica ativo.
 - Endereços devolvidos pelo addon (`redirect`, `fallback_url`) precisam estar no mesmo host do WHMCS, senão o serviço recusa.
 - Limites conhecidos: os limites de tentativas ficam em memória (zeram ao reiniciar); um desafio anti-robô (Cloudflare Turnstile) é o próximo passo se aparecer cadastro falso.
+
+## 18. HTTPS na publicação (aprendizado do primeiro teste com pagamento)
+
+No primeiro teste com cadastro pela página, o site foi publicado mas o HTTPS não: o Plesk cria o site com "redirecionar HTTP para HTTPS" ligado e sem certificado válido, então o visitante caía num erro de certificado, e a validação do Let's Encrypt (feita pelo próprio Plesk) também falhava por causa desse redirecionamento. O agente agora desliga o redirecionamento até existir o certificado, tenta de novo por até 24 horas com pausas crescentes e avisa o serviço quando sai (`published` -> `published` com `ssl: true`, só nessa direção). A página do cliente mostra "Estamos ativando o HTTPS" e acompanha até ficar pronto.
