@@ -317,3 +317,15 @@ O cliente não sai mais do `waypreview.com.br` para se cadastrar: a etapa "Seus 
 ## 18. HTTPS na publicação (aprendizado do primeiro teste com pagamento)
 
 No primeiro teste com cadastro pela página, o site foi publicado mas o HTTPS não: o Plesk cria o site com "redirecionar HTTP para HTTPS" ligado e sem certificado válido, então o visitante caía num erro de certificado, e a validação do Let's Encrypt (feita pelo próprio Plesk) também falhava por causa desse redirecionamento. O agente agora desliga o redirecionamento até existir o certificado, tenta de novo por até 24 horas com pausas crescentes e avisa o serviço quando sai (`published` -> `published` com `ssl: true`, só nessa direção). A página do cliente mostra "Estamos ativando o HTTPS" e acompanha até ficar pronto.
+
+## 19. Domínio próprio do cliente
+
+Depois de publicado, o cliente pode conectar o domínio dele; o domínio provisório (`<slug>.sites...`) deixa de existir (o domínio do cliente passa a ser o principal do site).
+
+1. **Pedido** (`POST /web/domain`, página): só para quem tem plano ativo e site publicado; o domínio é normalizado (sem `https://`, caminho, `www.`), recusado se for nosso (`waycloud.com.br`, `waypreview.com.br`, o domínio de prévias) ou se já estiver em uso por outro site. A página mostra os registros de DNS a criar: **A** para o IP (resolvido a partir do nome `SITE_TARGET_HOST`, hoje `hospedagem.waycloud.com.br`) ou CNAME/ALIAS para o nome, e **CNAME `www`** para o nome.
+2. **DNS**: o serviço confere sozinho (na hora em que o cliente olha e a cada minuto, com pausas crescentes por até 7 dias). Só aprova quando **todos** os registros A do domínio são nossos (um registro antigo em outro lugar dividiria os visitantes).
+3. **Troca no Plesk**: o agente renomeia a assinatura (`subscription --update -new-name`), confere pasta e resposta do site, pede o certificado (domínio e `www`) e reporta; qualquer falha reverte o nome (ver `agent/README.md`).
+4. **WHMCS**: o serviço avisa o addon (`update_service_domain`, addon 0.5.0), que só aceita serviços criados pelo fluxo de IA; se o WHMCS estiver fora do ar a troca não é desfeita e o aviso é repetido pelo cronômetro do serviço.
+5. **Página**: acompanha "aguardando o DNS", "configurando", "ativando o HTTPS" e "pronto", e troca o endereço mostrado para o novo.
+
+Ainda não coberto: venda de domínio (registrar um novo pelo WHMCS), mais de um domínio por site e o retorno ao provisório.

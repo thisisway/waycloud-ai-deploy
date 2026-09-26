@@ -5,6 +5,7 @@ import type { FastifyInstance, FastifyRequest } from "fastify";
 import { z } from "zod";
 import type { Db } from "./db/index.js";
 import { claimNextJob, reportJob } from "./deploys.js";
+import { claimDomainJob, reportDomainJob, syncWhmcsDomains } from "./domains.js";
 import type { ToolContext } from "./mcp/tools/define.js";
 import { hashToken } from "./security/tokens.js";
 
@@ -38,6 +39,10 @@ const report = z
   .object({ status: z.enum(["validating", "published", "failed", "rolled_back"]), step: z.string().regex(/^[a-z0-9_]{1,40}$/).optional(), error_code: z.string().regex(/^[a-z0-9_]{1,40}$/).optional(), ssl: z.boolean().optional() })
   .strict();
 
+const domainReport = z
+  .object({ status: z.enum(["active", "failed"]), step: z.string().regex(/^[a-z0-9_]{1,40}$/).optional(), error_code: z.string().regex(/^[a-z0-9_]{1,40}$/).optional(), ssl: z.boolean().optional() })
+  .strict();
+
 export function registerAgentRoutes(app: FastifyInstance, ctx: ToolContext) {
   void app.register(async (scope) => {
     // The agent's polls have no body: accept an empty JSON body instead of answering 400.
@@ -69,6 +74,22 @@ export function registerAgentRoutes(app: FastifyInstance, ctx: ToolContext) {
       await ctx.db.query("UPDATE servers SET last_seen_at = now() WHERE id = $1", [serverId]);
       const job = await claimNextJob(ctx.db, serverId);
       return job ? reply.send(job) : reply.code(204).send();
+    });
+
+    // The customer's own domain: the agent switches the site on its server (rename, certificate) and reports back.
+    scope.post("/domain-jobs/next", async (req, reply) => {
+      const job = await claimDomainJob(ctx.db, serverOf(req));
+      return job ? reply.send(job) : reply.code(204).send();
+    });
+
+    scope.post<{ Params: { id: string } }>("/domain-jobs/:id/report", async (req, reply) => {
+      const body = domainReport.safeParse(req.body);
+      if (!body.success || !/^[0-9a-f-]{36}$/.test(req.params.id)) return reply.code(400).send({ error: "invalid_body" });
+      const r = await reportDomainJob(ctx.db, serverOf(req), req.params.id, body.data);
+      if (r === "not_found") return reply.code(404).send({ error: "not_found" });
+      if (r === "bad_transition") return reply.code(409).send({ error: "bad_transition" });
+      if (body.data.status === "active") void syncWhmcsDomains(ctx); // best effort now; the maintenance timer retries
+      return reply.send({ ok: true });
     });
 
     scope.get<{ Params: { id: string } }>("/jobs/:id/package", async (req, reply) => {

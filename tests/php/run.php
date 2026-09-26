@@ -563,6 +563,51 @@ test('API action register_checkout is signed like the others and answers with th
     eq([422, ['error' => 'invalid_cycle']], [$s2, $r2]);
 });
 
+echo "\nCustomer's own domain\n";
+test('updates the WHMCS service domain for an AI service only, and keeps our checkout row in step', function () use ($web, $validWeb) {
+    $e = make();
+    $e['checkout']->registerFromWeb($web($validWeb)); // service 2500
+    eq(['ok' => true], $e['checkout']->updateServiceDomain(['service_id' => 2500, 'domain' => 'MeuSite.com.br']));
+    eq(['domain', [2500, 'meusite.com.br']], end($e['whmcs']->calls));
+    eq('meusite.com.br', $e['store']->checkouts[1]['domain']);
+    eq('service.domain_changed', end($e['store']->log)['type']);
+    $dump = json_encode($e['store']->log);
+    yes(!str_contains($dump, 'meusite'), 'the domain is not written to the log');
+});
+test('refuses other services, bad service ids and bad domains before touching WHMCS', function () use ($web, $validWeb) {
+    $e = make();
+    $e['checkout']->registerFromWeb($web($validWeb));
+    $before = count($e['whmcs']->calls);
+    foreach ([['service_id' => 999, 'domain' => 'a.com', 'e' => 'unknown_service'], ['service_id' => 'x', 'domain' => 'a.com', 'e' => 'invalid_service'], ['service_id' => 2500, 'domain' => 'not a domain', 'e' => 'invalid_domain'], ['service_id' => 2500, 'domain' => '../etc', 'e' => 'invalid_domain'], ['service_id' => 2500, 'domain' => 'semponto', 'e' => 'invalid_domain']] as $c) {
+        try {
+            $e['checkout']->updateServiceDomain($c);
+            throw new RuntimeException('should have been refused: ' . json_encode($c));
+        } catch (WayCloud\Ai\ApiException $x) {
+            eq($c['e'], $x->errorCode);
+        }
+    }
+    eq($before, count($e['whmcs']->calls), 'WHMCS untouched');
+});
+test('a WHMCS error alerts the admin and answers 502 without changing our row', function () use ($web, $validWeb) {
+    $e = make();
+    $e['checkout']->registerFromWeb($web($validWeb));
+    $e['whmcs']->failDomain = 'Service ID Not Found';
+    try {
+        $e['checkout']->updateServiceDomain(['service_id' => 2500, 'domain' => 'novo.com.br']);
+        throw new RuntimeException('should have failed');
+    } catch (WayCloud\Ai\ApiException $x) {
+        eq([502, 'whmcs_error'], [$x->status, $x->errorCode]);
+    }
+    eq(1, count($e['whmcs']->alerts), 'admin alerted');
+    yes($e['store']->checkouts[1]['domain'] !== 'novo.com.br', 'row unchanged');
+});
+test('API action update_service_domain is signed like the others', function () use ($call, $web, $validWeb) {
+    $e = make();
+    $e['checkout']->registerFromWeb($web($validWeb));
+    eq([200, ['ok' => true]], $call($e, ['action' => 'update_service_domain', 'service_id' => 2500, 'domain' => 'novo.com.br']));
+    eq([404, ['error' => 'unknown_service']], $call($e, ['action' => 'update_service_domain', 'service_id' => 1, 'domain' => 'novo.com.br']));
+});
+
 echo "\nInvoice page banner\n";
 test('AI invoices get the way back; paid ones also redirect; other invoices and pages get nothing', function () use ($web, $validWeb) {
     $e = make();

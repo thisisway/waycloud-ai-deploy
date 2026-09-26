@@ -148,6 +148,7 @@ final class FakeWhmcs implements WhmcsApi
     public ?string $failAddClient = null;
     public ?string $failAddOrder = null;
     public ?string $failReset = null;
+    public ?string $failDomain = null;
     /** Runs inside addClient: lets a test simulate a concurrent request winning the race. */
     public ?\Closure $afterAddClient = null;
     public ?string $sso = 'https://app.test/sso/abc';
@@ -199,6 +200,14 @@ final class FakeWhmcs implements WhmcsApi
         }
         $o = $this->nextOrder++;
         return ['orderid' => $o, 'invoiceid' => $o + 1000, 'serviceid' => $o + 2000];
+    }
+
+    public function updateServiceDomain(int $serviceId, string $domain): void
+    {
+        $this->calls[] = ['domain', [$serviceId, $domain]];
+        if ($this->failDomain !== null) {
+            throw new WhmcsApiError($this->failDomain);
+        }
     }
 
     public function sendPasswordReset(string $email): void

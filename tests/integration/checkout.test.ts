@@ -28,6 +28,7 @@ beforeAll(async () => {
     registerCheckout: async () => {
       throw new Error("unused");
     },
+    updateServiceDomain: async () => {},
   };
   ctx = { ...t.ctx, addon };
 });

@@ -29,6 +29,7 @@ beforeAll(async () => {
       throw new Error("unused");
     },
     plans: async () => [],
+    updateServiceDomain: async () => {},
   };
   ctx = { ...base.ctx, addon };
   app = buildApp(ctx);

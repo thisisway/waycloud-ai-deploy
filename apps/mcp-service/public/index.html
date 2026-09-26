@@ -149,6 +149,24 @@
           </ol>
           <p id="deploy-done" hidden><a id="site-link" class="btn" target="_blank" rel="noopener noreferrer"></a></p>
           <p id="deploy-note" class="note soft"></p>
+
+          <div id="domain-box" class="domain" hidden>
+            <h3>Usar o seu próprio domínio</h3>
+            <p class="note">Quando o domínio estiver conectado, o endereço provisório deixa de funcionar e o seu domínio passa a ser o principal.</p>
+            <form id="domain-form" novalidate>
+              <label for="f-dominio">Seu domínio</label>
+              <div class="inline">
+                <input id="f-dominio" type="text" inputmode="url" autocomplete="off" autocapitalize="off" spellcheck="false" maxlength="253" placeholder="meusite.com.br" aria-describedby="e-dominio">
+                <button id="domain-submit" class="btn" type="submit">Conectar</button>
+              </div>
+              <p id="e-dominio" class="err" hidden></p>
+            </form>
+            <div id="domain-dns" hidden>
+              <p id="domain-status" class="note" role="status" aria-live="polite"></p>
+              <div id="dns-records" class="dns" hidden></div>
+              <button type="button" id="domain-cancel" class="text-btn muted" hidden>Cancelar</button>
+            </div>
+          </div>
         </section>
 
         <p class="restart"><button type="button" id="restart" class="text-btn muted" hidden>Começar de novo</button></p>

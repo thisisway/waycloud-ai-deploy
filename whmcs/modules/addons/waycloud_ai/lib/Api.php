@@ -57,6 +57,8 @@ final class Api
                     return [200, ['ok' => true]];
                 case 'create_checkout':
                     return [200, $this->checkout->createFromMcp($data)];
+                case 'update_service_domain':
+                    return [200, $this->checkout->updateServiceDomain($data)];
                 case 'register_checkout':
                     return [200, $this->checkout->registerFromWeb($data)];
                 case 'plans':

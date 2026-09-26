@@ -177,6 +177,21 @@ h2 { font-size: 22px; font-weight: 700; letter-spacing: -0.02em; line-height: 1.
 .btn.wide { width: 100%; margin-top: 4px; }
 #signup-fallback { margin: 0 0 12px; }
 
+/* ---- own domain ---- */
+.domain { margin-top: 28px; padding-top: 24px; border-top: 1px solid var(--line); }
+.domain h3 { font-size: 16px; font-weight: 700; letter-spacing: -0.01em; }
+.domain label { display: block; font-size: 13px; font-weight: 600; margin: 12px 0 5px; }
+.inline { display: flex; gap: 8px; }
+.inline input { flex: 1; min-width: 0; height: 44px; padding: 0 12px; font: inherit; font-size: 15px; color: var(--ink); background: var(--white); border: 1.5px solid var(--line-strong); border-radius: 10px; }
+.inline input:focus { outline: none; border-color: var(--blue); box-shadow: 0 0 0 3px rgba(29, 102, 255, 0.15); }
+.dns { margin: 12px 0; border: 1px solid var(--line); border-radius: var(--radius); overflow: hidden; }
+.dns-row { display: grid; grid-template-columns: 72px minmax(0, 1fr) auto; gap: 4px 12px; align-items: start; padding: 12px 14px; font-size: 13px; }
+.dns-row + .dns-row { border-top: 1px solid var(--line); }
+.dns-row b { font-weight: 700; }
+.dns-row .val { display: grid; gap: 2px; min-width: 0; }
+.dns-row code { display: block; padding: 4px 8px; font-size: 12px; }
+.dns-row small { color: var(--ink-3); font-size: 12px; }
+
 /* ---- waiting + publishing ---- */
 .bar-load { height: 4px; border-radius: 99px; background: var(--line); overflow: hidden; margin: 18px 0; }
 .bar-load span { display: block; height: 100%; width: 30%; background: var(--blue); border-radius: 99px; animation: slide 1.5s ease-in-out infinite; }

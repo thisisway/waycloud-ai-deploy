@@ -1,4 +1,4 @@
-import { Api, brl, checkForm, ensureSession, maskDoc, maskPhone, sendZip, signup } from "./flow.js";
+import { Api, brl, checkForm, ensureSession, maskDoc, maskPhone, postJson, sendZip, signup } from "./flow.js";
 import { startRibbons } from "./ribbons.js";
 
 const $ = (id) => document.getElementById(id);
@@ -323,6 +323,92 @@ function showDone(note) {
   link.replaceChildren(document.createTextNode(`Abrir ${state.site_url.replace(/^https?:\/\//, "")}`), icon("external"));
   $("deploy-done").hidden = false;
   $("deploy-note").textContent = state.https === false ? HTTPS_PENDING_NOTE : (note ?? "");
+  if ($("domain-box").hidden) {
+    $("domain-box").hidden = false;
+    void domainStatus(true); // an earlier request (or one in progress) is shown right away
+  }
+}
+
+// ---- 4. the customer's own domain --------------------------------------------------------------------------------
+let domainRun = 0;
+
+function renderDns(dns) {
+  const box = $("dns-records");
+  box.replaceChildren(
+    ...dns.registros.map((r) => {
+      const row = document.createElement("div");
+      row.className = "dns-row";
+      const value = document.createElement("div");
+      value.className = "val";
+      const code = text("code", r.valor);
+      value.append(text("small", `Nome: ${r.nome}`), code, ...(r.alternativa ? [text("small", r.alternativa)] : []));
+      const copy = text("button", "Copiar", "text-btn");
+      copy.type = "button";
+      copy.addEventListener("click", async () => {
+        try {
+          await navigator.clipboard.writeText(r.valor);
+          copy.textContent = "Copiado!";
+          setTimeout(() => (copy.textContent = "Copiar"), 2000);
+        } catch {
+          showAlert("Não consegui copiar. Selecione o valor e copie manualmente.");
+        }
+      });
+      row.append(text("b", r.tipo), value, copy);
+      return row;
+    }),
+  );
+  box.hidden = false;
+}
+
+/** Shows what the service says about the domain request, and keeps looking while something is still moving. */
+async function domainStatus(first = false) {
+  const me = ++domainRun;
+  for (let i = 0; i < 240 && me === domainRun; i++) {
+    const { status, body } = await postJson(api, "/web/domain/status", { sessao_id: state.sessao_id });
+    if (status === 200 && body.status && body.status !== "none") {
+      applyDomain(body);
+      if (["active", "failed", "expired", "cancelled"].includes(body.status) && (body.status !== "active" || body.https)) return;
+    } else if (first || body.status === "none") {
+      return; // no request yet: only the form
+    }
+    await sleep(body.status === "waiting_dns" ? 15_000 : 5_000);
+  }
+}
+
+function applyDomain(d) {
+  const open = d.status === "waiting_dns" || d.status === "ready" || d.status === "switching" || d.status === "active";
+  $("domain-form").hidden = open;
+  $("domain-dns").hidden = !open && !d.mensagem;
+  $("domain-status").textContent = d.status === "active" && !d.https ? `${d.mensagem} Estamos ativando o HTTPS: em alguns minutos o endereço abre com cadeado.` : d.mensagem;
+  $("domain-cancel").hidden = d.status !== "waiting_dns";
+  if (d.status === "waiting_dns" && d.dns) renderDns(d.dns);
+  else $("dns-records").hidden = true;
+  if (d.status === "active") {
+    save({ site_url: `${d.https ? "https" : "http"}://${d.dominio}`, https: d.https });
+    showDone(state.https ? "" : undefined);
+    $("domain-box").hidden = false;
+    $("domain-form").hidden = true;
+    $("domain-dns").hidden = false;
+  }
+}
+
+async function submitDomain(event) {
+  event.preventDefault();
+  clearAlert();
+  const err = $("e-dominio");
+  err.hidden = true;
+  const button = $("domain-submit");
+  button.disabled = true;
+  const { status, body } = await postJson(api, "/web/domain", { sessao_id: state.sessao_id, dominio: $("f-dominio").value });
+  button.disabled = false;
+  if (status === 200 && body.ok) {
+    applyDomain(body);
+    void domainStatus();
+    return;
+  }
+  err.textContent = body.mensagem ?? body.mensagem_para_usuario ?? (status === 429 ? "Muitas tentativas. Aguarde alguns minutos." : "Não consegui conectar o domínio agora. Tente de novo em instantes.");
+  err.hidden = false;
+  $("f-dominio").setAttribute("aria-invalid", "true");
 }
 
 // ---- wiring -------------------------------------------------------------------------------
@@ -366,6 +452,13 @@ document.querySelectorAll("[data-copy]").forEach((b) =>
 startRibbons($("ribbons"));
 
 $("signup").addEventListener("submit", submitSignup);
+$("domain-form").addEventListener("submit", submitDomain);
+$("domain-cancel").addEventListener("click", async () => {
+  await postJson(api, "/web/domain/cancel", { sessao_id: state.sessao_id });
+  domainRun++;
+  $("domain-form").hidden = false;
+  $("domain-dns").hidden = true;
+});
 $("change-plan").addEventListener("click", () => (clearAlert(), view(3, "s-preview", "s-plans")));
 $("f-tel").addEventListener("input", (e) => (e.target.value = maskPhone(e.target.value)));
 const docInput = () => {

@@ -19,6 +19,9 @@ interface WhmcsApi
     /** @return array{orderid:int, invoiceid:int, serviceid:int} @throws WhmcsApiError */
     public function addOrder(int $clientId, int $pid, string $cycle, string $domain, string $paymentMethod): array;
 
+    /** Points the WHMCS service at another domain (its Plesk module finds the subscription by it). @throws WhmcsApiError */
+    public function updateServiceDomain(int $serviceId, string $domain): void;
+
     /** Sends the customer the "define your password" e-mail. @throws WhmcsApiError */
     public function sendPasswordReset(string $email): void;
 

@@ -100,3 +100,13 @@ export async function signup(api, payload) {
   if (res.ok && body.ok && body.redirect) return { ok: true, redirect: body.redirect };
   return { ok: false, status: res.status, errors: body.errors ?? {}, fallbackUrl: body.fallback_url ?? null, mensagem: body.mensagem_para_usuario ?? null };
 }
+
+/** POSTs JSON to the service. Never throws: a network failure is { status: 0, body: {} }. */
+export async function postJson(api, path, payload) {
+  try {
+    const res = await api.fetch(`${api.base}${path}`, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(payload) });
+    return { status: res.status, body: await res.json().catch(() => ({})) };
+  } catch {
+    return { status: 0, body: {} };
+  }
+}

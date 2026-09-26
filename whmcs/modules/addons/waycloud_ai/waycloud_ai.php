@@ -18,7 +18,7 @@ function waycloud_ai_config(): array
     return [
         'name' => 'Way Cloud AI Deploy',
         'description' => 'Contratação rápida de hospedagem para sites publicados por assistentes de IA (MCP).',
-        'version' => '0.4.0',
+        'version' => '0.5.0',
         'author' => 'Way Cloud',
         'language' => 'portuguese-br',
         'fields' => [

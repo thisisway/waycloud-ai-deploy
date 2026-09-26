@@ -39,6 +39,13 @@ curl -fsS -H "Authorization: Bearer $WC_TOKEN" "$WC_API/waycloud-agent.sh" -o /t
 O Plesk cria todo site com "redirecionar HTTP para HTTPS" ligado. Sem certificado válido isso deixa o site inacessível (e trava a própria validação do Let's Encrypt). Por isso o agente **desliga o redirecionamento** enquanto não há certificado do Let's Encrypt, pede o certificado e só então liga o redirecionamento de volta (`plesk bin site --update <domínio> -ssl-redirect true|false`).
 Se o certificado não sair na hora (DNS ainda não propagou, limite do Let's Encrypt...), o domínio entra em `/var/lib/waycloud-agent/ssl-pending/` e é tentado de novo com pausas crescentes (2, 5, 10, 20, 40 e 60 minutos) por até 24 horas. Quando sai, o agente avisa o serviço e a página do cliente mostra o HTTPS ativo.
 
+## Domínio do cliente
+Quando o cliente conecta o domínio dele (e o DNS já aponta para nós), o serviço entrega ao agente um trabalho de troca de domínio. O agente:
+1. `plesk bin subscription --update <provisório> -new-name <domínio do cliente>` (o Plesk move a pasta do site junto);
+2. confere que a pasta ficou em `/var/www/vhosts/<domínio>/httpdocs` e que o site responde nesse nome. Se qualquer coisa fugir do esperado, **volta o nome anterior** e reporta a falha: o site nunca fica pela metade;
+3. leva os snapshots de rollback junto e pede o certificado para o domínio (e `www`, se ele também aponta para nós), com o redirecionamento HTTP->HTTPS desligado até o certificado existir (mesma lógica de nova tentativa por 24 h).
+Depois o serviço atualiza o domínio do serviço no WHMCS (ação `update_service_domain` do addon, a partir da versão 0.5.0), porque o módulo do Plesk no WHMCS acha a assinatura pelo domínio (suspender, encerrar...).
+
 ## Voltar a versão anterior à mão
 ```
 D=/var/www/vhosts/<domínio>; S=$D/../.waycloud-agent/<domínio>/snapshots

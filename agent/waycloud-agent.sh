@@ -37,14 +37,16 @@ api() { # api METHOD PATH [json-file] -> prints the HTTP status (000 on network 
   curl "${args[@]}" "$WC_API$2" 2>/dev/null || echo 000
 }
 
-report() { # report JOB STATUS [step] [error_code] [ssl true|false]
-  local id=$1 status=$2 step=${3:-} code=${4:-} ssl=${5:-}
+post_report() { # post_report jobs|domain-jobs JOB STATUS [step] [error_code] [ssl true|false]
+  local kind=$1 id=$2 status=$3 step=${4:-} code=${5:-} ssl=${6:-}
   # empty fields are dropped; ssl is true/false/absent
   jq -cn --arg s "$status" --arg st "$step" --arg c "$code" --argjson ssl "${ssl:-null}"     '{status:$s, step:$st, error_code:$c, ssl:$ssl} | with_entries(select(.value != "" and .value != null))' > "$WC_STATE/report.json"
-  local http; http=$(api POST "/jobs/$id/report" "$WC_STATE/report.json")
-  log "job=$id report=$status step=$step code=$code ssl=$ssl http=$http"
-  [ "$http" = 200 ] || log "job=$id report rejected: $(head -c 200 "$BODY" 2>/dev/null)"
+  local http; http=$(api POST "/$kind/$id/report" "$WC_STATE/report.json")
+  log "$kind job=$id report=$status step=$step code=$code ssl=$ssl http=$http"
+  [ "$http" = 200 ] || log "$kind job=$id report rejected: $(head -c 200 "$BODY" 2>/dev/null)"
 }
+report() { post_report jobs "$@"; }         # report JOB STATUS [step] [error_code] [ssl]
+report_domain() { post_report domain-jobs "$@"; }
 
 is_uuid()   { [[ "$1" =~ ^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$ ]]; }
 is_sha256() { [[ "$1" =~ ^[0-9a-f]{64}$ ]]; }
@@ -71,12 +73,13 @@ set_redirect() { # set_redirect DOMAIN true|false
   "$WC_PLESK" bin site --update "$1" -ssl-redirect "$2" >> "$WC_STATE/plesk.log" 2>&1 || true
 }
 
-ensure_ssl() { # prints true|false. A missing certificate never fails a deploy: the site is live over HTTP meanwhile.
-  local domain=$1
+ensure_ssl() { # ensure_ssl DOMAIN [www]  prints true|false. A missing certificate never fails a deploy: the site is live over HTTP meanwhile.
+  local domain=$1 www=${2:-} names=(-d "$1")
+  [ "$www" = true ] && names+=(-d "www.$1")
   if has_le_cert "$domain"; then set_redirect "$domain" true; echo true; return; fi
   set_redirect "$domain" false
   if [ "$WC_SSL_MODE" = auto ] && [ -n "$WC_LE_EMAIL" ]; then
-    timeout 180 "$WC_PLESK" bin extension --exec letsencrypt cli.php -d "$domain" -m "$WC_LE_EMAIL" >> "$WC_STATE/letsencrypt.log" 2>&1 || true
+    timeout 180 "$WC_PLESK" bin extension --exec letsencrypt cli.php "${names[@]}" -m "$WC_LE_EMAIL" >> "$WC_STATE/letsencrypt.log" 2>&1 || true
     if has_le_cert "$domain"; then set_redirect "$domain" true; echo true; return; fi
   fi
   echo false
@@ -84,28 +87,31 @@ ensure_ssl() { # prints true|false. A missing certificate never fails a deploy: 
 
 # Sites still waiting for a certificate (DNS not there yet, Let's Encrypt limits...) are retried with growing pauses, for 24 h.
 SSL_DELAYS=(120 300 600 1200 2400 3600)
-mark_ssl_pending() { # mark_ssl_pending JOB DOMAIN
+# One file per (domain, who to tell): a deploy and a domain switch on the same domain both need their own report.
+# Name: <domain>@deploy | <domain>@domain ("@" cannot be part of a domain). Content: JOB FIRST_TS TRIES NEXT_TS WWW
+mark_ssl_pending() { # mark_ssl_pending JOB DOMAIN [deploy|domain] [www]
   local now; now=$(date +%s)
   mkdir -p "$WC_STATE/ssl-pending"
-  echo "$1 $now 0 $(( now + SSL_DELAYS[0] ))" > "$WC_STATE/ssl-pending/$2"
+  echo "$1 $now 0 $(( now + SSL_DELAYS[0] )) ${4:-false}" > "$WC_STATE/ssl-pending/$2@${3:-deploy}"
 }
 
 retry_ssl() {
-  local f domain id first tries next now delay
+  local f name domain id first tries next kind www now delay
   now=$(date +%s)
   for f in "$WC_STATE"/ssl-pending/*; do
     [ -f "$f" ] || continue
-    domain=$(basename "$f")
-    read -r id first tries next < "$f" || continue
+    name=$(basename "$f"); domain=${name%@*}; kind=${name#*@}
+    read -r id first tries next www < "$f" || continue
+    www=${www:-false}
     if (( now - first > 86400 )); then log "ssl: giving up on $domain after 24 hours"; rm -f "$f"; continue; fi
     (( now < next )) && continue
-    if [ "$(ensure_ssl "$domain")" = true ]; then
+    if [ "$(ensure_ssl "$domain" "$www")" = true ]; then
       log "ssl: certificate ready for $domain"
       rm -f "$f"
-      report "$id" published ssl_ready "" true
+      if [ "$kind" = domain ]; then report_domain "$id" active ssl_ready "" true; else report "$id" published ssl_ready "" true; fi
     else
       tries=$(( tries + 1 )); delay=${SSL_DELAYS[$(( tries < 5 ? tries : 5 ))]}
-      echo "$id $first $tries $(( now + delay ))" > "$f"
+      echo "$id $first $tries $(( now + delay )) $www" > "$f"
     fi
   done
 }
@@ -186,9 +192,44 @@ deploy() { # deploy JOB-JSON-FILE
   local_check "$domain" || { restore check local_check_failed; return; }
 
   local ssl; ssl=$(ensure_ssl "$domain")
-  if [ "$ssl" = true ]; then rm -f "$WC_STATE/ssl-pending/$domain"; else mark_ssl_pending "$id" "$domain"; fi
+  if [ "$ssl" = true ]; then rm -f "$WC_STATE/ssl-pending/$domain@deploy"; else mark_ssl_pending "$id" "$domain" deploy; fi
   prune "$work/snapshots" "$keep"
   report "$id" published finished "" "$ssl"
+}
+
+# The customer's own domain becomes the site's main domain (the provisional one goes away). Either the whole switch
+# works, or Plesk is put back as it was: the site is never left half-moved.
+switch_domain() { # switch_domain JOB-JSON-FILE
+  local f=$1 id old new www
+  id=$(jq -r '.job_id // empty' "$f"); old=$(jq -r '.old_domain // empty' "$f")
+  new=$(jq -r '.domain // empty' "$f"); www=$(jq -r 'if .include_www == true then "true" else "false" end' "$f")
+  is_uuid "$id" || { log "domain job rejected: bad job id"; return; }
+  if ! is_domain "$old" || ! is_domain "$new" || [ "$old" = "$new" ]; then log "domain job=$id rejected: invalid domain"; report_domain "$id" failed validate invalid_domain; return; fi
+  [ -d "$WC_VHOSTS/$old/httpdocs" ] || { log "domain job=$id: $old has no docroot"; report_domain "$id" failed validate vhost_not_found; return; }
+  [ ! -e "$WC_VHOSTS/$new" ] || { log "domain job=$id: $new already exists on this server"; report_domain "$id" failed validate domain_exists; return; }
+  log "domain job=$id switching $old -> $new"
+
+  # 1. the main domain of the subscription becomes the customer's (Plesk moves the vhost folder along)
+  "$WC_PLESK" bin subscription --update "$old" -new-name "$new" >> "$WC_STATE/plesk.log" 2>&1 || { report_domain "$id" failed rename rename_failed; return; }
+  if [ ! -d "$WC_VHOSTS/$new/httpdocs" ]; then # not where the deploys expect it: put everything back
+    "$WC_PLESK" bin subscription --update "$new" -new-name "$old" >> "$WC_STATE/plesk.log" 2>&1
+    log "domain job=$id: docroot not at the new name, reverted"
+    report_domain "$id" failed rename docroot_not_moved; return
+  fi
+  if [ -d "$WC_WORK/$old" ] && [ ! -e "$WC_WORK/$new" ]; then mv -- "$WC_WORK/$old" "$WC_WORK/$new"; fi # the rollback snapshots follow the site
+
+  # 2. the site must answer on the new name before anything else is announced
+  if ! local_check "$new"; then
+    "$WC_PLESK" bin subscription --update "$new" -new-name "$old" >> "$WC_STATE/plesk.log" 2>&1
+    if [ -d "$WC_WORK/$new" ] && [ ! -e "$WC_WORK/$old" ]; then mv -- "$WC_WORK/$new" "$WC_WORK/$old"; fi
+    log "domain job=$id: site did not answer on $new, reverted"
+    report_domain "$id" failed check local_check_failed; return
+  fi
+
+  # 3. certificate (the redirect stays off until it exists); the domain is active either way
+  local ssl; ssl=$(ensure_ssl "$new" "$www")
+  if [ "$ssl" = true ]; then rm -f "$WC_STATE/ssl-pending/$new@domain"; else mark_ssl_pending "$id" "$new" domain "$www"; fi
+  report_domain "$id" active finished "" "$ssl"
 }
 
 main() {
@@ -202,7 +243,9 @@ main() {
     local http; http=$(api POST /jobs/next)
     case "$http" in
       200) backoff=0; deploy "$BODY"; [ "$WC_ONCE" = 1 ] && exit 0; continue ;;
-      204) backoff=0 ;;
+      204) backoff=0
+           local dhttp; dhttp=$(api POST /domain-jobs/next)
+           if [ "$dhttp" = 200 ]; then switch_domain "$BODY"; [ "$WC_ONCE" = 1 ] && exit 0; continue; fi ;;
       401) log "token rejected by the service (401)"; [ "$WC_ONCE" = 1 ] && exit 2; backoff=60 ;;
       *)   log "service unreachable or error (http=$http)"; [ "$WC_ONCE" = 1 ] && exit 3; backoff=$(( backoff < 60 ? backoff + 10 : 60 )) ;;
     esac

@@ -1,4 +1,5 @@
 import { failStaleDeploys } from "../deploys.js";
+import { checkDueDomains, failStaleSwitches, syncWhmcsDomains } from "../domains.js";
 import { removePreview } from "../previews.js";
 import type { ToolContext } from "../mcp/tools/define.js";
 import { packageKey, rawKey } from "../uploads.js";
@@ -43,11 +44,19 @@ export async function runMaintenance(ctx: ToolContext) {
   return { previews: await expirePreviews(ctx), uploads: await cleanupStaleUploads(ctx), sessions: await purgeOldSessions(ctx), deploys: await failStaleDeploys(ctx.db) };
 }
 
+/** Every minute: the customers' DNS checks that are due, and WHMCS catching up with switched domains. */
+export async function runDomainChecks(ctx: ToolContext) {
+  return { dns: await checkDueDomains(ctx), stale: await failStaleSwitches(ctx.db), synced: await syncWhmcsDomains(ctx) };
+}
+
 // ponytail: single-instance timer. With more than one replica, add a lock (pg_try_advisory_lock) or move to BullMQ.
 export function startMaintenance(ctx: ToolContext, everyMs = 10 * 60_000, log: (o: object) => void = () => {}): () => void {
   const tick = () => runMaintenance(ctx).then((r) => (r.previews || r.uploads || r.sessions || r.deploys) && log({ msg: "maintenance", ...r })).catch((e: unknown) => log({ msg: "maintenance failed", error: String(e) }));
   const timer = setInterval(tick, everyMs);
+  const domainTick = () => runDomainChecks(ctx).then((r) => (r.dns || r.stale || r.synced) && log({ msg: "domain checks", ...r })).catch((e: unknown) => log({ msg: "domain checks failed", error: String(e) }));
+  const domainTimer = setInterval(domainTick, 60_000);
   timer.unref();
+  domainTimer.unref();
   void tick();
-  return () => clearInterval(timer);
+  return () => (clearInterval(timer), clearInterval(domainTimer));
 }

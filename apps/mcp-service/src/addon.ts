@@ -44,6 +44,8 @@ export interface SignupResult {
 }
 
 export interface AddonClient {
+  /** Tells WHMCS the service now lives on the customer's own domain. */
+  updateServiceDomain(req: { serviceId: number; domain: string }): Promise<void>;
   registerCheckout(req: { sessionId: string; pid: number; cycle: "monthly" | "annually"; form: SignupForm }): Promise<SignupResult>;
   createCheckout(req: { sessionId: string; pid: number; cycle: "monthly" | "annually" }): Promise<{ checkoutId: number; url: string; expiresAt: string }>;
   plans(): Promise<AddonPlan[]>;
@@ -97,6 +99,11 @@ export function httpAddonClient(cfg: AddonConfig): AddonClient {
   }
 
   return {
+    async updateServiceDomain(r) {
+      const parsed = z.object({ ok: z.literal(true) }).safeParse(await call({ action: "update_service_domain", service_id: r.serviceId, domain: r.domain }));
+      if (!parsed.success) throw new AddonError("bad_response", 200);
+    },
+
     async registerCheckout(r) {
       const parsed = signupResponse.safeParse(await call({ action: "register_checkout", session_id: r.sessionId, pid: r.pid, cycle: r.cycle, form: r.form }));
       if (!parsed.success) throw new AddonError("bad_response", 200);

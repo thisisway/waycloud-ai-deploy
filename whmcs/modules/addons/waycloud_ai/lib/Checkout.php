@@ -62,6 +62,37 @@ final class Checkout
         return ['ok' => $r['ok'], 'errors' => $r['errors'], 'redirect' => $r['redirect'], 'checkout_id' => $c['id'], 'fallback_url' => $r['login_url'] !== null ? $this->checkoutUrl($c['token']) : null];
     }
 
+    /**
+     * The customer connected their own domain and the site now lives on it: WHMCS must follow, or its Plesk module
+     * (suspend, terminate...) would look for the old name. Only services that came from an AI checkout can be touched.
+     * @param array<string,mixed> $req service_id, domain
+     * @return array{ok:bool}
+     */
+    public function updateServiceDomain(array $req): array
+    {
+        $serviceId = filter_var($req['service_id'] ?? null, FILTER_VALIDATE_INT);
+        $domain = strtolower(trim((string) ($req['domain'] ?? '')));
+        if ($serviceId === false || $serviceId <= 0) {
+            throw new ApiException('invalid_service');
+        }
+        if (strlen($domain) > 253 || !preg_match('/^[a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?(\.[a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?)+$/', $domain)) {
+            throw new ApiException('invalid_domain');
+        }
+        $row = $this->store->findCheckoutBy('service_id', $serviceId);
+        if ($row === null) {
+            throw new ApiException('unknown_service', 404);
+        }
+        try {
+            $this->whmcs->updateServiceDomain($serviceId, $domain);
+        } catch (WhmcsApiError $e) {
+            $this->alert('Checkout AI: não foi possível trocar o domínio do serviço #' . $serviceId, $e->getMessage());
+            throw new ApiException('whmcs_error', 502);
+        }
+        $this->store->updateCheckout((int) $row['id'], ['domain' => $domain]);
+        $this->store->logEvent('service.domain_changed', (string) $row['id'], ['service_id' => $serviceId], ($this->now)());
+        return ['ok' => true];
+    }
+
     /** @param array<string,mixed> $req @return array{id:int, token:string, expires_at:string} */
     private function newCheckout(array $req): array
     {

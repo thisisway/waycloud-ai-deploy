@@ -82,6 +82,11 @@ final class LocalWhmcsApi implements WhmcsApi
         ];
     }
 
+    public function updateServiceDomain(int $serviceId, string $domain): void
+    {
+        $this->call('UpdateClientProduct', ['serviceid' => $serviceId, 'domain' => $domain]); // verify: WHMCS API (changes the service's domain field only)
+    }
+
     public function sendPasswordReset(string $email): void
     {
         $this->call('ResetPassword', ['email' => $email]); // verify: WHMCS 8 API (ResetPassword sends the reset-validation e-mail)

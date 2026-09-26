@@ -8,6 +8,7 @@ import { syncAgentTokens } from "../../apps/mcp-service/src/agent.js";
 import type { Db } from "../../apps/mcp-service/src/db/index.js";
 import { TOOLS } from "../../apps/mcp-service/src/mcp/tools/index.js";
 import type { ToolContext } from "../../apps/mcp-service/src/mcp/tools/define.js";
+import { requestDomain } from "../../apps/mcp-service/src/domains.js";
 import { buildApp } from "../../apps/mcp-service/src/server.js";
 import { findSession } from "../../apps/mcp-service/src/sessions.js";
 import { testCtx, type MemoryStorage } from "../helpers.js";
@@ -92,6 +93,8 @@ describe.skipIf(!enabled)("deploy agent (bash, root) against the real service", 
     return r.dados!.deploy_id;
   };
   const statusOf = async (s: { token: string }, id: string) => (await call("status_deploy", { sessao_id: s.token, deploy_id: id })).dados as { status: string; url: string | null; https_ativo: boolean | null };
+  const makeDue = (file: string) => dx(`f=/var/lib/waycloud-agent/ssl-pending/${file}; awk '{$4=0; print}' $f > $f.new && mv $f.new $f`); // next attempt: now
+  const dnsOk = { resolve4: async () => ["203.0.113.5"] }; // every name (target, domain, www) points to "us"
   const doc = (d: string) => `${V}/${d}/httpdocs`;
   const snaps = (d: string) => dx(`ls ${V}/.waycloud-agent/${d}/snapshots 2>/dev/null | wc -l`);
 
@@ -123,24 +126,102 @@ describe.skipIf(!enabled)("deploy agent (bash, root) against the real service", 
     const plesk = () => dx("cat /tmp/plesk.log");
     expect(await plesk()).toContain(`bin site --update ${s.domain} -ssl-redirect false`); // a redirect to a missing certificate would lock visitors out
     expect(await plesk()).not.toContain(`${s.domain} -ssl-redirect true`);
-    expect(await dx(`cat /var/lib/waycloud-agent/ssl-pending/${s.domain}`)).toMatch(new RegExp(`^${id} \\d+ 0 \\d+$`));
+    expect(await dx(`cat /var/lib/waycloud-agent/ssl-pending/${s.domain}@deploy`)).toMatch(new RegExp(`^${id} \\d+ 0 \\d+ false$`));
     expect(await statusOf(s, id)).toMatchObject({ https_ativo: false });
 
     // Not due yet: another poll changes nothing.
     expect((await agent()).code).toBe(0);
-    expect(await dxFail(`test -e /var/lib/waycloud-agent/ssl-pending/${s.domain}`)).toBe(0);
+    expect(await dxFail(`test -e /var/lib/waycloud-agent/ssl-pending/${s.domain}@deploy`)).toBe(0);
 
     // The certificate shows up (a self-signed one whose issuer is "Let's Encrypt") and the retry becomes due.
     await dx(`openssl req -x509 -newkey rsa:2048 -nodes -keyout /tmp/le.key -out /tmp/le.crt -days 1 -subj "/O=Let's Encrypt/CN=${s.domain}" 2>/dev/null`);
     await dx(`(openssl s_server -accept 8443 -cert /tmp/le.crt -key /tmp/le.key -www >/tmp/s_server.log 2>&1 &) ; sleep 1`);
-    await dx(`sed -i 's/ [0-9]*$/ 0/' /var/lib/waycloud-agent/ssl-pending/${s.domain}`); // next attempt: now
+    await makeDue(`${s.domain}@deploy`);
     expect((await agent()).code).toBe(0);
     await dx("pkill -x openssl || true");
 
     expect(await plesk()).toContain(`bin site --update ${s.domain} -ssl-redirect true`);
-    expect(await dxFail(`test -e /var/lib/waycloud-agent/ssl-pending/${s.domain}`)).toBe(1); // no longer pending
+    expect(await dxFail(`test -e /var/lib/waycloud-agent/ssl-pending/${s.domain}@deploy`)).toBe(1); // no longer pending
     expect(await statusOf(s, id)).toMatchObject({ https_ativo: true, url: `https://${s.domain}` });
   }, 180_000);
+
+  describe("the customer's own domain", () => {
+    const state = async (uuid: string) => (await db.query<{ status: string; error_code: string | null; ssl: boolean | null; id: string }>("SELECT c.id, c.status, c.error_code, c.ssl FROM domain_changes c JOIN subscriptions s ON s.whmcs_service_id = c.subscription_id WHERE s.session_id = $1 ORDER BY c.created_at DESC LIMIT 1", [uuid]))[0]!;
+    const subDomain = async (uuid: string) => (await db.query<{ domain: string }>("SELECT domain FROM subscriptions WHERE session_id = $1", [uuid]))[0]!.domain;
+    /** A site that is live on its provisional domain, with a request for `dom` whose DNS is already right. */
+    async function readyForSwitch(dom: string) {
+      ctx.resolver = dnsOk;
+      const s = await site("OLD");
+      const id = await publish(s, { "index.html": `LIVE-${dom}` });
+      expect((await agent()).code).toBe(0); // the deploy
+      const r = await requestDomain(ctx, s.uuid, dom);
+      expect(r.ok, JSON.stringify(r)).toBe(true);
+      expect((await state(s.uuid)).status).toBe("ready");
+      return { s, id };
+    }
+
+    it("switches the site: Plesk renames it, the folder and the rollback snapshots follow, HTTPS is asked for the domain and www, the service is told and the redirect turns on once the certificate exists", async () => {
+      const dom = "cliente-um.test";
+      const { s, id } = await readyForSwitch(dom);
+      const old = s.domain;
+      expect((await agent()).code).toBe(0);
+
+      expect(await dx(`cat ${doc(dom)}/index.html`)).toBe(`LIVE-${dom}`);
+      expect(await dxFail(`test -e ${V}/${old}`)).toBe(1); // the provisional domain is gone
+      expect(await dxFail(`test -d ${V}/.waycloud-agent/${dom}/snapshots`)).toBe(0); // snapshots followed the site
+      expect(await dxFail(`test -e ${V}/.waycloud-agent/${old}`)).toBe(1);
+      const plesk = await dx("cat /tmp/plesk.log");
+      expect(plesk).toContain(`subscription --update ${old} -new-name ${dom}`);
+      expect(plesk).toContain(`letsencrypt cli.php -d ${dom} -d www.${dom} -m ops@test.local`);
+      expect(plesk).toContain(`bin site --update ${dom} -ssl-redirect false`);
+
+      const st = await state(s.uuid);
+      expect([st.status, st.ssl, await subDomain(s.uuid)]).toEqual(["active", false, dom]);
+      expect((await statusOf(s, id)).url).toBe(`http://${dom}`); // one address for everything: the deploy status follows the new domain
+      expect(await dx(`cat /var/lib/waycloud-agent/ssl-pending/${dom}@domain`)).toMatch(new RegExp(`^${st.id} \\d+ 0 \\d+ true$`));
+
+      // A later deploy lands on the new domain's folder.
+      const id2 = await publish(s, { "index.html": "SECOND" });
+      expect((await agent()).code).toBe(0);
+      expect(await dx(`cat ${doc(dom)}/index.html`)).toBe("SECOND");
+      expect((await statusOf(s, id2)).status).toBe("publicado");
+
+      // The certificate shows up: the retry reports it for the DOMAIN job and turns the redirect on.
+      await dx(`openssl req -x509 -newkey rsa:2048 -nodes -keyout /tmp/le2.key -out /tmp/le2.crt -days 1 -subj "/O=Let's Encrypt/CN=${dom}" 2>/dev/null`);
+      await dx(`(openssl s_server -accept 8443 -cert /tmp/le2.crt -key /tmp/le2.key -www >/tmp/s_server2.log 2>&1 &) ; sleep 1`);
+      await makeDue(`${dom}@domain`);
+      await makeDue(`${dom}@deploy`);
+      expect((await agent()).code).toBe(0);
+      await dx("pkill -x openssl || true");
+      expect(await dx("cat /tmp/plesk.log")).toContain(`bin site --update ${dom} -ssl-redirect true`);
+      expect((await state(s.uuid)).ssl).toBe(true);
+      expect(await dxFail(`test -e /var/lib/waycloud-agent/ssl-pending/${dom}@domain`)).toBe(1);
+      expect(await dxFail(`test -e /var/lib/waycloud-agent/ssl-pending/${dom}@deploy`)).toBe(1); // the second deploy is told as well
+    }, 240_000);
+
+    it("a rename that Plesk refuses changes nothing", async () => {
+      const dom = "cliente-dois.test";
+      const { s } = await readyForSwitch(dom);
+      await dx("touch /tmp/plesk-fail-rename");
+      expect((await agent()).code).toBe(0);
+      await dx("rm -f /tmp/plesk-fail-rename");
+      expect(await state(s.uuid)).toMatchObject({ status: "failed", error_code: "rename_failed" });
+      expect(await subDomain(s.uuid)).toBe(s.domain);
+      expect(await dx(`cat ${doc(s.domain)}/index.html`)).toBe(`LIVE-${dom}`); // the site is still where it was
+    }, 240_000);
+
+    it("if the folder does not move with the rename, Plesk is put back and the site stays as it was", async () => {
+      const dom = "cliente-tres.test";
+      const { s } = await readyForSwitch(dom);
+      await dx("touch /tmp/plesk-keep-dir");
+      expect((await agent()).code).toBe(0);
+      await dx("rm -f /tmp/plesk-keep-dir");
+      expect(await state(s.uuid)).toMatchObject({ status: "failed", error_code: "docroot_not_moved" });
+      expect(await dx("cat /tmp/plesk.log")).toContain(`subscription --update ${dom} -new-name ${s.domain}`); // reverted
+      expect(await subDomain(s.uuid)).toBe(s.domain);
+      expect(await dx(`cat ${doc(s.domain)}/index.html`)).toBe(`LIVE-${dom}`);
+    }, 240_000);
+  });
 
   it("a corrupted package (hash mismatch) fails before touching the live site", async () => {
     const s = await site("KEEP-ME");
