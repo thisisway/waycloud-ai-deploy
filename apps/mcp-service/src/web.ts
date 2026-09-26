@@ -19,18 +19,24 @@ const PAGES: Record<string, { file: string; type: string; immutable?: boolean }>
   "/site.js": { file: "site.js", type: "text/javascript; charset=utf-8" },
   "/flow.js": { file: "flow.js", type: "text/javascript; charset=utf-8" },
   "/chat.js": { file: "chat.js", type: "text/javascript; charset=utf-8" },
+  "/device.js": { file: "device.js", type: "text/javascript; charset=utf-8" },
   "/ribbons.js": { file: "ribbons.js", type: "text/javascript; charset=utf-8" },
   "/waycloud-logo.svg": { file: "waycloud-logo.svg", type: "image/svg+xml" },
   "/fonts/plus-jakarta-sans-v12-latin.woff2": { file: "fonts/plus-jakarta-sans-v12-latin.woff2", type: "font/woff2", immutable: true }, // self-hosted: no request to Google
 };
 // Scripts stay strict (own files + the support chat SDK). Styles allow inline only because the chat widget injects its own.
 const CHAT = "https://chatwoot.waycloud.com.br";
-const HEADERS = {
-  "content-security-policy": `default-src 'none'; script-src 'self' ${CHAT}; style-src 'self' 'unsafe-inline'; font-src 'self' ${CHAT} data:; connect-src 'self' ${CHAT} wss://chatwoot.waycloud.com.br; img-src 'self' data: ${CHAT}; media-src ${CHAT}; frame-src ${CHAT}; base-uri 'none'; form-action 'none'; frame-ancestors 'none'`,
+/** Where the page may frame the free preview (device view): the preview sites of the configured template, e.g. https://*.waypreview.com.br. */
+export function previewFrameSource(previewUrlTemplate: string): string {
+  const host = new URL(previewUrlTemplate.replace("{slug}", "x")).host;
+  return `https://${host.replace(/^x./, "*.")}`;
+}
+const headersFor = (previewFrame: string) => ({
+  "content-security-policy": `default-src 'none'; script-src 'self' ${CHAT}; style-src 'self' 'unsafe-inline'; font-src 'self' ${CHAT} data:; connect-src 'self' ${CHAT} wss://chatwoot.waycloud.com.br; img-src 'self' data: ${CHAT}; media-src ${CHAT}; frame-src ${CHAT} ${previewFrame}; base-uri 'none'; form-action 'none'; frame-ancestors 'none'`,
   "x-content-type-options": "nosniff",
   "referrer-policy": "no-referrer",
   "cache-control": "no-cache",
-};
+});
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/;
 export const MAX_WEB_ZIP_BYTES = 100 * 1024 * 1024; // same cap as the pre-signed upload (schemas.ts) and the archive limits
 
@@ -77,6 +83,7 @@ export class RateLimit {
 }
 
 export function registerWeb(app: FastifyInstance, ctx: ToolContext) {
+  const HEADERS = headersFor(previewFrameSource(ctx.settings.previewUrlTemplate));
   const perIp = new RateLimit(10 * 60_000);
   const perSession = new RateLimit(10 * 60_000);
   const overall = new RateLimit(60 * 60_000);

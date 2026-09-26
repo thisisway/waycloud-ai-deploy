@@ -266,3 +266,19 @@ code { flex: 1; min-width: 0; font-family: ui-monospace, "SF Mono", Consolas, mo
 .pair2 { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
 .pair2.city { grid-template-columns: 2fr 1fr; }
 @media (max-width: 420px) { .pair2 { grid-template-columns: 1fr; } .offers li { flex-direction: column; align-items: flex-start; } }
+
+/* Device preview: the right pane shows the free preview at desktop, tablet or phone size (the real site, scaled to fit) */
+.brand.previewing .brand-copy { display: none; }
+.brand.previewing { align-items: stretch; }
+.device { position: relative; width: 100%; display: flex; flex-direction: column; gap: 12px; padding: 24px clamp(16px, 3vw, 40px); min-height: 0; }
+.device-bar { display: flex; align-items: center; justify-content: space-between; gap: 12px; flex-wrap: wrap; }
+.device .seg { background: var(--white); }
+.device-stage { flex: 1; min-height: 320px; display: flex; align-items: flex-start; justify-content: center; }
+.device-frame { position: relative; background: var(--white); border: 1px solid var(--line-strong); border-radius: 10px; overflow: hidden; box-shadow: 0 18px 50px rgba(11, 16, 35, 0.16); }
+.device-frame.tablet { border: 10px solid #1b2238; border-radius: 26px; }
+.device-frame.mobile { border: 9px solid #1b2238; border-radius: 34px; }
+.device-frame iframe { position: absolute; top: 0; left: 0; border: 0; background: var(--white); transform-origin: 0 0; }
+.device-size { font-size: 12.5px; color: var(--ink-3); text-align: center; }
+@media (max-width: 1000px) { .device { padding: 20px 16px; } .device-stage { min-height: 260px; } }
+.dev-btn { font: inherit; font-size: 12.5px; font-weight: 600; padding: 5px 15px; border: 0; border-radius: 999px; background: none; color: var(--ink-3); cursor: pointer; }
+.dev-btn.on { background: var(--blue); color: var(--white); }

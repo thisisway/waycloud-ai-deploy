@@ -286,6 +286,22 @@
 
     <aside class="pane brand">
       <canvas id="ribbons" class="ribbons" aria-hidden="true"></canvas>
+      <div id="device" class="device" hidden>
+        <div class="device-bar">
+          <div class="seg" role="group" aria-label="Tamanho da tela">
+            <button type="button" class="dev-btn on" data-device="desktop" aria-pressed="true">Computador</button>
+            <button type="button" class="dev-btn" data-device="tablet" aria-pressed="false">Tablet</button>
+            <button type="button" class="dev-btn" data-device="mobile" aria-pressed="false">Celular</button>
+          </div>
+          <a id="device-open" class="link-out" target="_blank" rel="noopener noreferrer"><span>Abrir em outra aba</span><svg class="ic"><use href="#i-external"/></svg></a>
+        </div>
+        <div id="device-stage" class="device-stage">
+          <div id="device-frame" class="device-frame desktop">
+            <iframe id="device-iframe" title="Prévia do seu site" sandbox="allow-scripts allow-same-origin allow-forms allow-popups" referrerpolicy="no-referrer" loading="lazy"></iframe>
+          </div>
+        </div>
+        <p id="device-size" class="device-size"></p>
+      </div>
       <div class="brand-copy">
         <p class="eyebrow">Publicação com IA</p>
         <h1>Seu site criado por IA, no ar em minutos.</h1>

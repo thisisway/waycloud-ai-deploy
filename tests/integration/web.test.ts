@@ -32,7 +32,7 @@ afterAll(async () => {
 
 describe("public page", () => {
   it("serves the page and its assets with a strict CSP", async () => {
-    for (const [path, type] of [["/", "text/html"], ["/site.css", "text/css"], ["/site.js", "text/javascript"], ["/flow.js", "text/javascript"], ["/ribbons.js", "text/javascript"], ["/chat.js", "text/javascript"], ["/waycloud-logo.svg", "image/svg+xml"], ["/fonts/plus-jakarta-sans-v12-latin.woff2", "font/woff2"]] as const) {
+    for (const [path, type] of [["/", "text/html"], ["/site.css", "text/css"], ["/site.js", "text/javascript"], ["/flow.js", "text/javascript"], ["/device.js", "text/javascript"], ["/ribbons.js", "text/javascript"], ["/chat.js", "text/javascript"], ["/waycloud-logo.svg", "image/svg+xml"], ["/fonts/plus-jakarta-sans-v12-latin.woff2", "font/woff2"]] as const) {
       const r = await fetch(base + path);
       expect(r.status, path).toBe(200);
       expect(r.headers.get("content-type"), path).toContain(type);
@@ -56,7 +56,7 @@ describe("public page", () => {
   });
 
   it("the page code never builds HTML from strings (no innerHTML / eval)", () => {
-    for (const f of ["site.js", "flow.js", "ribbons.js", "chat.js"]) expect(readFileSync(`apps/mcp-service/public/${f}`, "utf8"), f).not.toMatch(/innerHTML|outerHTML|insertAdjacentHTML|document\.write|eval\(|new Function/);
+    for (const f of ["site.js", "flow.js", "device.js", "ribbons.js", "chat.js"]) expect(readFileSync(`apps/mcp-service/public/${f}`, "utf8"), f).not.toMatch(/innerHTML|outerHTML|insertAdjacentHTML|document\.write|eval\(|new Function/);
   });
 
   it("llms.txt shows the public address (the preview domain), never a leftover placeholder or platform host", async () => {
