@@ -1,6 +1,7 @@
 import { migrate, openPostgres } from "./db/index.js";
 import { startMaintenance } from "./jobs/maintenance.js";
 import { httpAddonClient } from "./addon.js";
+import { clamdScanner } from "./scan/clamav.js";
 import { syncAgentTokens } from "./agent.js";
 import { planCatalog } from "./plans.js";
 import { buildApp } from "./server.js";
@@ -18,7 +19,8 @@ const agents = await syncAgentTokens(db, config.agentTokens);
 if (agents.length) log({ msg: "agent tokens synced", servers: agents });
 
 const addon = config.addon && httpAddonClient(config.addon);
-const ctx = { db, plans: planCatalog({ addon }), storage: s3Storage(config.s3), settings: config.settings, addon };
+const av = config.clamav ? clamdScanner({ ...config.clamav, timeoutMs: 60_000 }) : undefined;
+const ctx = { db, plans: planCatalog({ addon }), storage: s3Storage(config.s3), settings: config.settings, addon, av };
 startMaintenance(ctx, 10 * 60_000, log);
 
 const app = buildApp(ctx, { webhookSecret: config.addon?.secret });

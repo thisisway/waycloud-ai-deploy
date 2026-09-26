@@ -1,6 +1,6 @@
 import { normalizePath } from "../security/sanitize.js";
 
-export type FindingCode = "EXECUTABLE" | "WEBSHELL" | "DISGUISED_PHP" | "PHISHING" | "PHISHING_SUSPECT" | "ENV_REMOVED" | "JUNK_REMOVED" | "BAD_PATH";
+export type FindingCode = "EXECUTABLE" | "WEBSHELL" | "DISGUISED_PHP" | "PHISHING" | "PHISHING_SUSPECT" | "ENV_REMOVED" | "JUNK_REMOVED" | "BAD_PATH" | "MALWARE" | "AV_INCOMPLETE";
 export interface Finding {
   code: FindingCode;
   severity: "block" | "warn";

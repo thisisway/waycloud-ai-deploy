@@ -16,6 +16,8 @@ export interface ToolContext {
   addon?: AddonClient;
   /** DNS lookups for the customer's own domain; the system resolver when absent (tests inject one). */
   resolver?: import("../../domains.js").Resolver;
+  /** Antivirus (ClamAV); absent when CLAMAV_HOST is not set. */
+  av?: import("../../scan/clamav.js").AvScanner;
   /** fetch used by verificar_site (injectable in tests). */
   fetchFn?: typeof fetch;
 }

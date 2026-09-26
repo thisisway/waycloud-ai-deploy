@@ -74,3 +74,11 @@ TEST_DATABASE_URL=... TEST_S3_ENDPOINT=... pnpm test   # inclui Postgres e S3 re
 ## Segurança em resumo
 
 O MCP não guarda credenciais do WHMCS (só um segredo HMAC com o addon). A IA nunca vê dados pessoais nem de pagamento. Arquivos do cliente são tratados como dado, e as respostas das ferramentas só usam mensagens fixas. Uploads passam por limites de zip e varredura; o agente valida hash e tamanho, troca a pasta do site de forma atômica e volta sozinho para a versão anterior se a verificação falhar.
+
+## Antivírus (ClamAV)
+
+O serviço envia cada arquivo do site, depois da varredura por assinaturas, ao ClamAV (`clamd`, protocolo `INSTREAM`): os bytes vão em fluxo e só o veredito volta, nada é gravado nem executado. Arquivo infectado reprova o envio inteiro (mensagem fixa, sem nomes). Se o `clamd` estiver fora do ar, o envio continua e o relatório registra `AV_INCOMPLETE` (e o log avisa).
+
+- Variáveis: `CLAMAV_HOST` (vazio = desligado) e `CLAMAV_PORT` (padrão 3310).
+- Produção: serviço `clamav` (imagem `clamav/clamav:stable`) no projeto `web-way` do Easypanel, com volume `clamav-db` para as assinaturas (atualizadas sozinhas pelo freshclam). Endereço interno: `web-way_clamav:3310`.
+- Teste seguro: enviar o arquivo de teste EICAR deve reprovar o envio.

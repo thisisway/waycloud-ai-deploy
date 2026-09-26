@@ -26,6 +26,19 @@ export type StoreResult = { ok: false } | { ok: true; files: Map<string, Uint8Ar
 // Finding details stay in the database (scan_report); the AI only ever sees fixed messages.
 export async function storePackage(ctx: ToolContext, sessionId: string, uploadId: string, input: Map<string, Uint8Array>): Promise<StoreResult> {
   const result = scan(input);
+  if (result.approved && ctx.av) {
+    // Antivirus over what would be published. An unreachable daemon does not stop customers (the signature scan already ran)
+    // but leaves a warning in the report and the log so it gets fixed.
+    const verdict = await ctx.av(result.files).catch(() => ({ complete: false, infected: [] as { path: string; signature: string }[] }));
+    for (const f of verdict.infected) result.findings.push({ code: "MALWARE", severity: "block", path: f.path });
+    if (verdict.infected.length) {
+      result.approved = false;
+      console.error(JSON.stringify({ msg: "antivirus: upload blocked", files: verdict.infected.length, signatures: [...new Set(verdict.infected.map((f) => f.signature))].slice(0, 5) }));
+    } else if (!verdict.complete) {
+      result.findings.push({ code: "AV_INCOMPLETE", severity: "warn" });
+      console.error(JSON.stringify({ msg: "antivirus: some files were not scanned (clamd unreachable or refused them)" }));
+    }
+  }
   const report = JSON.stringify(result.findings);
   if (!result.approved) {
     await ctx.db.query("UPDATE uploads SET scan_status = 'blocked', scan_report = $2::text::jsonb WHERE id = $1", [uploadId, report]);

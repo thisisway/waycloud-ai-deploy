@@ -45,6 +45,8 @@ const env = z.object({
   PREVIEW_ROOT: z.string().default(DEFAULT_SETTINGS.previewRoot),
   PREVIEW_URL_TEMPLATE: z.string().includes("{slug}").default(DEFAULT_SETTINGS.previewUrlTemplate),
   PREVIEW_TTL_HOURS: z.coerce.number().positive().default(DEFAULT_SETTINGS.previewTtlHours),
+  CLAMAV_HOST: z.string().regex(/^[a-zA-Z0-9._-]+$/).optional(),
+  CLAMAV_PORT: z.coerce.number().int().positive().default(3310),
   SITE_TARGET_HOST: z.string().regex(/^[a-z0-9.-]+$/).default(DEFAULT_SETTINGS.siteTargetHost),
   SITE_NAMESERVERS: z.string().regex(/^[a-z0-9.-]+(,[a-z0-9.-]+)*$/).default(DEFAULT_SETTINGS.nameservers.join(",")),
 });
@@ -55,5 +57,6 @@ export function loadConfig(source: NodeJS.ProcessEnv) {
   const settings: Settings = { ...DEFAULT_SETTINGS, previewRoot: e.PREVIEW_ROOT, previewUrlTemplate: e.PREVIEW_URL_TEMPLATE, previewTtlHours: e.PREVIEW_TTL_HOURS, siteTargetHost: e.SITE_TARGET_HOST, nameservers: e.SITE_NAMESERVERS.split(",") };
   if (!!e.ADDON_URL !== !!e.ADDON_HMAC_SECRET) throw new Error("ADDON_URL and ADDON_HMAC_SECRET must be set together");
   const addon = e.ADDON_URL && e.ADDON_HMAC_SECRET ? { url: e.ADDON_URL, secret: e.ADDON_HMAC_SECRET } : undefined;
-  return { databaseUrl: e.DATABASE_URL, port: e.PORT, host: e.HOST, s3, settings, addon, agentTokens: e.AGENT_TOKENS };
+  const clamav = e.CLAMAV_HOST ? { host: e.CLAMAV_HOST, port: e.CLAMAV_PORT } : undefined;
+  return { clamav, databaseUrl: e.DATABASE_URL, port: e.PORT, host: e.HOST, s3, settings, addon, agentTokens: e.AGENT_TOKENS };
 }
