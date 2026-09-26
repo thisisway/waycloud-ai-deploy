@@ -29,7 +29,7 @@ WC_MAX_BYTES="${WC_MAX_BYTES:-524288000}"    # 500 MB
 WC_MAX_FILES="${WC_MAX_FILES:-50000}"
 
 # Versions only ever go up (YYYY-MM-DD.NN): a replayed older script is refused even when its signature is valid.
-WC_AGENT_VERSION="2026-09-26.02"
+WC_AGENT_VERSION="2026-09-26.03"
 # Public key that new versions of this script must be signed with (the private key never leaves the maintainer's machine).
 WC_SIGN_PUB='-----BEGIN PUBLIC KEY-----
 MIIBojANBgkqhkiG9w0BAQEFAAOCAY8AMIIBigKCAYEA4BAeaQeUa8dGkXKKtxqM
@@ -222,14 +222,33 @@ deploy() { # deploy JOB-JSON-FILE
     prune "$work/failed" 2
   }
   if [ -n "$php" ]; then
-    "$WC_PLESK" bin site --update "$domain" -php_handler_id "plesk-php${php//./}-fpm" >> "$WC_STATE/plesk.log" 2>&1 || { restore php php_handler_failed; return; }
+    "$WC_PLESK" bin site --update "$domain" -php_handler_id "plesk-php${php//./}-fpm" -php true >> "$WC_STATE/plesk.log" 2>&1 || { restore php php_handler_failed; return; }
   fi
+  harden_site "$domain" "$php" || { restore harden harden_failed; send_diag "$id" harden_failed "$domain"; return; }
   local_check "$domain" || { restore check local_check_failed; return; }
 
   local ssl; ssl=$(ensure_ssl "$domain")
   if [ "$ssl" = true ]; then rm -f "$WC_STATE/ssl-pending/$domain@deploy"; else mark_ssl_pending "$id" "$domain" deploy; send_diag "$id" ssl_pending "$domain"; fi
   prune "$work/snapshots" "$keep"
   report "$id" published finished "" "$ssl"
+}
+
+# What runs on a customer's site is theirs to write, so the server limits what it can do: no shell for the subscription's system
+# user, no PHP at all for a static site, and for a PHP site the functions that run commands are switched off (open_basedir and one
+# system user per subscription are Plesk's own defaults). Every deploy re-applies it, so a plan change cannot undo it.
+harden_site() { # harden_site DOMAIN PHP-VERSION-OR-EMPTY
+  local d=$1 v=$2 ini
+  "$WC_PLESK" bin subscription --update "$d" -shell /bin/false >> "$WC_STATE/plesk.log" 2>&1 || return 1
+  if [ -z "$v" ]; then
+    "$WC_PLESK" bin subscription --update "$d" -php false >> "$WC_STATE/plesk.log" 2>&1 || return 1
+  else
+    ini=$(mktemp) || return 1
+    printf '%s
+' 'disable_functions=exec,passthru,shell_exec,system,proc_open,popen,pcntl_exec,pcntl_fork,dl,proc_get_status,proc_terminate,proc_nice,posix_kill,posix_setuid,posix_setsid,posix_mkfifo,show_source,opcache_get_status' > "$ini"
+    "$WC_PLESK" bin subscription --update-php-settings "$d" -settings "$ini" >> "$WC_STATE/plesk.log" 2>&1; local rc=$?
+    rm -f "$ini"
+    return $rc
+  fi
 }
 
 # The customer's own domain becomes the site's main domain (the provisional one goes away). Either the whole switch

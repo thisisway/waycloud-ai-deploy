@@ -1,9 +1,10 @@
 #!/bin/bash
-# Fake Plesk CLI: records every call. Failure switches: /tmp/plesk-fail-php (php handler), /tmp/plesk-fail-rename (rename),
+# Fake Plesk CLI: records every call. Failure switches: /tmp/plesk-fail-php (php handler), /tmp/plesk-fail-harden (shell/PHP limits), /tmp/plesk-fail-rename (rename),
 # /tmp/plesk-keep-dir (rename "succeeds" but the vhost folder does not move).
 echo "$*" >> /tmp/plesk.log
 case "$*" in
   *php_handler_id*) [ -f /tmp/plesk-fail-php ] && exit 1 ;;
+  *"-shell /bin/false"*) [ -f /tmp/plesk-fail-harden ] && exit 1 ;;
   *"subscription --update"*"-new-name"*)
     [ -f /tmp/plesk-fail-rename ] && exit 1
     old=$4; new=$6

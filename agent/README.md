@@ -61,3 +61,7 @@ mv $D/httpdocs /tmp/httpdocs.ruim && mv $S/<snapshot> $D/httpdocs
 - `journalctl -u waycloud-agent -n 50`: cada passo registra o job, o status enviado e o código de erro.
 - `token rejected (401)`: o token foi trocado no serviço; atualize `WC_TOKEN` em `/etc/waycloud-agent.env` e `systemctl restart waycloud-agent`.
 - Códigos de erro: `invalid_*` (job recusado), `vhost_not_found`, `sha256_mismatch`, `no_index`, `local_check_failed` (voltou ao anterior), `php_handler_failed` (voltou ao anterior).
+
+## Limites do que roda no site do cliente (2026-09-26.03)
+
+A cada publicação o agente reaplica, no Plesk: nenhum shell para o usuário de sistema da assinatura (`-shell /bin/false`); site estático sem PHP nenhum (`-php false`); site PHP com `disable_functions` sem as funções que executam comandos (`exec`, `system`, `shell_exec`, `passthru`, `proc_open`, `popen`, `pcntl_*`, `dl`...). O `open_basedir` e um usuário de sistema por assinatura já são o padrão do Plesk. Se o Plesk não aceitar os limites, a publicação é revertida (`harden_failed`): um site nunca fica no ar sem restrição.

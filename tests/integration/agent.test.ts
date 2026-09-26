@@ -120,6 +120,10 @@ describe.skipIf(!enabled)("deploy agent (bash, root) against the real service", 
 
     // no real certificate in the fake server: the site is live over http and the agent asked Plesk for one
     expect(await dx("cat /tmp/plesk.log")).toContain(`bin extension --exec letsencrypt cli.php -d ${s.domain} -m ops@test.local`);
+    // hardening: a static site gets no shell and no PHP at all
+    const hardened = await dx("cat /tmp/plesk.log");
+    expect(hardened).toContain(`bin subscription --update ${s.domain} -shell /bin/false`);
+    expect(hardened).toContain(`bin subscription --update ${s.domain} -php false`);
     expect(await statusOf(s, id)).toEqual({ status: "publicado", url: `http://${s.domain}`, https_ativo: false, intervalo_sugerido_segundos: 0 });
   }, 120_000);
 
@@ -360,7 +364,12 @@ describe.skipIf(!enabled)("deploy agent (bash, root) against the real service", 
     await dx("rm -f /tmp/plesk.log /tmp/plesk-fail-php");
     const id = await publish(ok, php);
     expect((await agent()).code).toBe(0);
-    expect(await dx("cat /tmp/plesk.log")).toContain(`bin site --update ${ok.domain} -php_handler_id plesk-php83-fpm`);
+    const plesk = await dx("cat /tmp/plesk.log");
+    expect(plesk).toContain(`bin site --update ${ok.domain} -php_handler_id plesk-php83-fpm -php true`);
+    // a PHP site keeps PHP but loses the functions that run commands, and never gets a shell
+    expect(plesk).toContain(`bin subscription --update ${ok.domain} -shell /bin/false`);
+    expect(plesk).toMatch(new RegExp(`bin subscription --update-php-settings ${ok.domain} -settings /tmp/`));
+    expect(plesk).not.toContain(`bin subscription --update ${ok.domain} -php false`);
     expect((await statusOf(ok, id)).status).toBe("publicado");
 
     const bad = await site("OLD-PHP-2");
@@ -371,6 +380,16 @@ describe.skipIf(!enabled)("deploy agent (bash, root) against the real service", 
     expect(await dx(`cat ${doc(bad.domain)}/index.html`)).toBe("OLD-PHP-2");
     expect((await statusOf(bad, id2)).status).toBe("revertido");
   }, 180_000);
+
+  it("if the limits cannot be applied the deploy is rolled back: a site is never left running unrestricted", async () => {
+    const s = await site("OLD-SAFE");
+    await dx("touch /tmp/plesk-fail-harden");
+    const id = await publish(s, { "index.html": "NEW" });
+    expect((await agent()).code).toBe(0);
+    await dx("rm -f /tmp/plesk-fail-harden");
+    expect(await dx(`cat ${doc(s.domain)}/index.html`)).toBe("OLD-SAFE");
+    expect((await statusOf(s, id)).status).toBe("revertido");
+  }, 120_000);
 
   it("keeps only the newest N snapshots", async () => {
     const s = await site("V0");
