@@ -1,4 +1,8 @@
 import { execFile } from "node:child_process";
+import { createSign, generateKeyPairSync } from "node:crypto";
+import { mkdtempSync, readFileSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import type { AddressInfo } from "node:net";
 import { promisify } from "node:util";
 import { strToU8 } from "fflate";
@@ -40,11 +44,11 @@ describe.skipIf(!enabled)("deploy agent (bash, root) against the real service", 
       return (e as { code: number }).code;
     }
   };
-  async function agent(env: Record<string, string> = {}) {
-    const args = ["exec", "-e", `WC_API=http://host.docker.internal:${port}/agent/v1`, "-e", `WC_TOKEN=${TOKEN}`, "-e", "WC_ONCE=1", "-e", "WC_PLESK=/usr/local/bin/plesk", "-e", "WC_LE_EMAIL=ops@test.local", "-e", "WC_CHECK_HTTP_PORT=8088", "-e", "WC_CHECK_HTTPS_PORT=8443"];
+  async function agent(env: Record<string, string> = {}, script = "/agent/waycloud-agent.sh") {
+    const args = ["exec", "-e", `WC_API=http://host.docker.internal:${port}/agent/v1`, "-e", `WC_TOKEN=${TOKEN}`, "-e", "WC_ONCE=1", "-e", "WC_AUTOUPDATE=0", "-e", "WC_PLESK=/usr/local/bin/plesk", "-e", "WC_LE_EMAIL=ops@test.local", "-e", "WC_CHECK_HTTP_PORT=8088", "-e", "WC_CHECK_HTTPS_PORT=8443"];
     for (const [k, v] of Object.entries(env)) args.push("-e", `${k}=${v}`);
     try {
-      const r = await run("docker", [...args, ctr, "/agent/waycloud-agent.sh"]);
+      const r = await run("docker", [...args, ctr, script]);
       if (process.env.DEBUG_AGENT) console.log("AGENT>>", r.stdout);
       return { code: 0, out: r.stdout };
     } catch (e) {
@@ -221,6 +225,69 @@ describe.skipIf(!enabled)("deploy agent (bash, root) against the real service", 
       expect(await subDomain(s.uuid)).toBe(s.domain);
       expect(await dx(`cat ${doc(s.domain)}/index.html`)).toBe(`LIVE-${dom}`);
     }, 240_000);
+  });
+
+  describe("self-update from the service (signed, newer, parses, passes its self-test)", () => {
+    const dir = mkdtempSync(join(tmpdir(), "wc-agent-dir-"));
+    const good = generateKeyPairSync("rsa", { modulusLength: 2048 });
+    const other = generateKeyPairSync("rsa", { modulusLength: 2048 });
+    const pem = good.publicKey.export({ type: "spki", format: "pem" }).toString().trim();
+    const base = readFileSync("agent/waycloud-agent.sh", "utf8");
+    /** The real script with the test public key and a given version. */
+    const variant = (version: string, extra = "") => base.replace(/WC_SIGN_PUB='[^']+'/, `WC_SIGN_PUB='${pem}'`).replace(/WC_AGENT_VERSION="[^"]+"/, `WC_AGENT_VERSION="${version}"`) + extra;
+    const serve = (script: string, signer = good.privateKey) => {
+      writeFileSync(join(dir, "waycloud-agent.sh"), script);
+      writeFileSync(join(dir, "waycloud-agent.sh.sig"), createSign("sha256").update(script).sign(signer).toString("base64"));
+    };
+    const installOld = async (version = "2000-01-01.01") => {
+      writeFileSync(join(dir, "old.sh"), variant(version));
+      await run("docker", ["cp", join(dir, "old.sh"), `${ctr}:/tmp/old-agent.sh`]);
+      await dx("chmod 750 /tmp/old-agent.sh");
+    };
+    const update = () => agent({ WC_AUTOUPDATE: "1", WC_UPDATE_INTERVAL: "0" }, "/tmp/old-agent.sh");
+    const versionOf = () => dx(`sed -n 's/^WC_AGENT_VERSION="\\(.*\\)"$/\\1/p' /tmp/old-agent.sh`);
+    beforeAll(() => void (ctx.settings.agentDir = dir));
+    afterAll(() => void (ctx.settings.agentDir = undefined));
+
+    it("installs a newer, correctly signed version and keeps working", async () => {
+      await installOld();
+      serve(variant("2999-01-01.01"));
+      const r = await update();
+      expect(r.code, r.out).toBe(0);
+      expect(r.out).toContain("update: installed 2999-01-01.01 (was 2000-01-01.01), restarting");
+      expect(r.out).toContain("agent started version=2999-01-01.01"); // the new one took over in the same run
+      expect(await versionOf()).toBe("2999-01-01.01");
+      expect(await dx("stat -c '%U %a' /tmp/old-agent.sh")).toBe("root 750");
+    }, 120_000);
+
+    it("ignores a script signed with another key", async () => {
+      await installOld();
+      serve(variant("2999-01-01.01"), other.privateKey);
+      const r = await update();
+      expect(r.out).toContain("signature check FAILED");
+      expect(await versionOf()).toBe("2000-01-01.01");
+    }, 120_000);
+
+    it("ignores a correctly signed but older (replayed) version, and a newer one that does not parse or fails its self-test", async () => {
+      await installOld("2500-01-01.01");
+      serve(variant("2400-01-01.01"));
+      expect((await update()).out).toContain("is not newer than");
+
+      serve(variant("2999-01-01.01", "\nthis is ( not valid bash\n"));
+      expect((await update()).out).toContain("does not parse");
+
+      serve(variant("2999-01-01.01").replace('echo "waycloud-agent $WC_AGENT_VERSION ok"', 'echo "broken"'));
+      expect((await update()).out).toContain("failed its self-test");
+      expect(await versionOf()).toBe("2500-01-01.01");
+    }, 180_000);
+
+    it("does nothing when the script is already current", async () => {
+      await installOld("2000-01-01.01");
+      serve(variant("2000-01-01.01"));
+      const r = await update();
+      expect(r.out).not.toContain("update:");
+      expect(await versionOf()).toBe("2000-01-01.01");
+    }, 120_000);
   });
 
   it("a corrupted package (hash mismatch) fails before touching the live site", async () => {

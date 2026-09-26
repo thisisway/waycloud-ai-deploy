@@ -23,8 +23,25 @@ WC_CHECK_ADDR="${WC_CHECK_ADDR:-127.0.0.1}"  # where the local health check conn
 WC_CHECK_HTTP_PORT="${WC_CHECK_HTTP_PORT:-80}"
 WC_CHECK_HTTPS_PORT="${WC_CHECK_HTTPS_PORT:-443}"
 WC_ONCE="${WC_ONCE:-0}"                      # 1 = one poll and exit (used by tests)
+WC_AUTOUPDATE="${WC_AUTOUPDATE:-1}"          # 1 = fetch newer signed versions of this script from the service
+WC_UPDATE_INTERVAL="${WC_UPDATE_INTERVAL:-300}"
 WC_MAX_BYTES="${WC_MAX_BYTES:-524288000}"    # 500 MB
 WC_MAX_FILES="${WC_MAX_FILES:-50000}"
+
+# Versions only ever go up (YYYY-MM-DD.NN): a replayed older script is refused even when its signature is valid.
+WC_AGENT_VERSION="2026-09-26.01"
+# Public key that new versions of this script must be signed with (the private key never leaves the maintainer's machine).
+WC_SIGN_PUB='-----BEGIN PUBLIC KEY-----
+MIIBojANBgkqhkiG9w0BAQEFAAOCAY8AMIIBigKCAYEA4BAeaQeUa8dGkXKKtxqM
+KDa4mZxFksMhcPasGsRSK1uNQtjpci4RSpfooUfL4v3VhA7/9pNinwLYS3ysji7H
+rzlRyOiA8m3upfCCiVjfQdn6fEmjJbomQqLbDK6KK5B86chyA48LijvDA/G+1P3U
+OMMhpIZb6OA6kgyk/mbwYg/d/zSWzMEsSQ1OH53vzZMSk3kvEWsv6icYixCNltKP
+7k0THTtm5NmnFp/J9l72WBe5F5y9ao2fkB/l0I+4/SpnvK30OX3+CGBv53ksJIkv
+IJa8vZGvaJfjGWcLkpbK4xH8tJJ2r4vk+7R+Z6WDRZTDl1AtsxFDie89l5vNeFro
+DBtTXhca3HMtJgfKEbpJHhMhbuUM3WzHhyhsWFNezBey+2sY5sEOObfpcimASzbj
+vi0a2EWtbwZFhuImVix6nRg9F00ht1weJjatVny9dS2Xkp+QkaxDWvvG9jN0NPX3
+uqOrcbsutlwzhWhE/gyuxVtqymjxsf6Jeg507vANs3mrAgMBAAE=
+-----END PUBLIC KEY-----'
 
 BODY="$WC_STATE/response.json"
 PHP_OK=" 7.4 8.0 8.1 8.2 8.3 8.4 "
@@ -32,7 +49,7 @@ PHP_OK=" 7.4 8.0 8.1 8.2 8.3 8.4 "
 log() { printf '%s %s\n' "$(date -u +%FT%TZ)" "$*"; }
 
 api() { # api METHOD PATH [json-file] -> prints the HTTP status (000 on network error), body in $BODY
-  local args=(-sS -m 60 -o "$BODY" -w '%{http_code}' -X "$1" -H "Authorization: Bearer $WC_TOKEN")
+  local args=(-sS -m 60 -o "$BODY" -w '%{http_code}' -X "$1" -H "Authorization: Bearer $WC_TOKEN" -H "X-Agent-Version: $WC_AGENT_VERSION")
   [ -n "${3:-}" ] && args+=(-H 'Content-Type: application/json' --data-binary "@$3")  # a bodiless request must not claim a JSON body
   curl "${args[@]}" "$WC_API$2" 2>/dev/null || echo 000
 }
@@ -232,13 +249,41 @@ switch_domain() { # switch_domain JOB-JSON-FILE
   report_domain "$id" active finished "" "$ssl"
 }
 
+# Newer versions of this script come from the service, but only run if they are signed with the maintainer's key,
+# are newer, parse, and pass their own self-test with the current configuration. Runs between jobs, never during one.
+WC_LAST_UPDATE_CHECK=0
+self_update() { # self_update "$@" (the arguments to restart with)
+  [ "$WC_AUTOUPDATE" = 1 ] || return 0
+  local now; now=$(date +%s)
+  (( now - WC_LAST_UPDATE_CHECK < WC_UPDATE_INTERVAL )) && return 0
+  WC_LAST_UPDATE_CHECK=$now
+  local self new="$WC_STATE/agent.new" sig="$WC_STATE/agent.sig" pub="$WC_STATE/agent-sign.pub" newv
+  self=$(readlink -f "$0")
+  [ "$(api GET /waycloud-agent.sh.sig)" = 200 ] || return 0
+  base64 -d < "$BODY" > "$sig" 2>/dev/null || return 0
+  [ "$(api GET /waycloud-agent.sh)" = 200 ] || return 0
+  cp "$BODY" "$new"
+  cmp -s "$new" "$self" && return 0
+  printf '%s\n' "$WC_SIGN_PUB" > "$pub"
+  if ! openssl dgst -sha256 -verify "$pub" -signature "$sig" "$new" > /dev/null 2>&1; then log "update: signature check FAILED, ignoring the script from the service"; return 0; fi
+  newv=$(sed -n 's/^WC_AGENT_VERSION="\([0-9.-]*\)"$/\1/p' "$new" | head -n 1)
+  [[ "$newv" =~ ^[0-9]{4}-[0-9]{2}-[0-9]{2}\.[0-9]{2}$ ]] || { log "update: new script has no valid version"; return 0; }
+  [[ "$newv" > "$WC_AGENT_VERSION" ]] || { log "update: $newv is not newer than $WC_AGENT_VERSION, ignoring"; return 0; }
+  bash -n "$new" 2> /dev/null || { log "update: $newv does not parse, ignoring"; return 0; }
+  bash "$new" --selftest 2> /dev/null | grep -q "^waycloud-agent $newv ok$" || { log "update: $newv failed its self-test, ignoring"; return 0; }
+  install -m 750 "$new" "$self.next" && mv -f "$self.next" "$self" || { log "update: could not install $newv"; return 0; }
+  log "update: installed $newv (was $WC_AGENT_VERSION), restarting"
+  exec "$self" "$@"
+}
+
 main() {
   mkdir -p "$WC_STATE"; chmod 700 "$WC_STATE"
   exec 9> "$WC_STATE/agent.lock"; flock -n 9 || { log "another agent instance is running"; exit 1; }
   trap 'log "stopping"; exit 0' TERM INT
-  log "agent started api=$WC_API"
+  log "agent started version=$WC_AGENT_VERSION api=$WC_API"
   local backoff=0
   while true; do
+    self_update "$@"
     retry_ssl
     local http; http=$(api POST /jobs/next)
     case "$http" in
@@ -254,4 +299,5 @@ main() {
   done
 }
 
+if [ "${1:-}" = "--selftest" ]; then echo "waycloud-agent $WC_AGENT_VERSION ok"; exit 0; fi
 main "$@"

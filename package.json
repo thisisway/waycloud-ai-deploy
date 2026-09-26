@@ -10,6 +10,7 @@
     "typecheck": "tsc --noEmit -p tsconfig.json",
     "dev": "tsx apps/mcp-service/src/main.ts",
     "build:addon": "node scripts/build-addon-zip.mjs",
+    "sign:agent": "node scripts/sign-agent.mjs",
     "checkout:dev": "tsx scripts/create-checkout-link.ts",
     "test:php": "docker run --rm -v \"%cd%:/app\" -w /app php:8.1-cli sh tests/php/check.sh"
   },

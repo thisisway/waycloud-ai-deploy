@@ -11,6 +11,8 @@ export interface Settings {
   maxActivePreviews: number;
   /** Name the customer's DNS points to (an A record of ours): resolved to the Plesk IP each time it is shown. */
   siteTargetHost: string;
+  /** Where the agent script and its signature are read from (tests point it elsewhere). */
+  agentDir?: string;
 }
 
 export const DEFAULT_SETTINGS: Settings = {

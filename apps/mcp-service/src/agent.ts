@@ -1,5 +1,6 @@
 import { timingSafeEqual } from "node:crypto";
 import { readFile } from "node:fs/promises";
+import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 import type { FastifyInstance, FastifyRequest } from "fastify";
 import { z } from "zod";
@@ -43,6 +44,8 @@ const domainReport = z
   .object({ status: z.enum(["active", "failed"]), step: z.string().regex(/^[a-z0-9_]{1,40}$/).optional(), error_code: z.string().regex(/^[a-z0-9_]{1,40}$/).optional(), ssl: z.boolean().optional() })
   .strict();
 
+const seenVersion = new Map<string, string>();
+
 export function registerAgentRoutes(app: FastifyInstance, ctx: ToolContext) {
   void app.register(async (scope) => {
     // The agent's polls have no body: accept an empty JSON body instead of answering 400.
@@ -57,6 +60,11 @@ export function registerAgentRoutes(app: FastifyInstance, ctx: ToolContext) {
       const serverId = await authenticate(ctx.db, req);
       if (!serverId) return reply.code(401).send({ error: "unauthorized" });
       (req as FastifyRequest & { serverId: string }).serverId = serverId;
+      const version = String(req.headers["x-agent-version"] ?? "");
+      if (/^[0-9a-z.-]{1,40}$/.test(version) && seenVersion.get(serverId) !== version) {
+        seenVersion.set(serverId, version);
+        console.log(JSON.stringify({ msg: "agent version", server: serverId, version })); // visible in the service logs: how updates are confirmed
+      }
     });
     const serverOf = (req: FastifyRequest) => (req as FastifyRequest & { serverId: string }).serverId;
 
@@ -65,8 +73,8 @@ export function registerAgentRoutes(app: FastifyInstance, ctx: ToolContext) {
 
     // The repository is private: the installer and the agent are served to whoever holds a valid token.
     const AGENT_DIR = fileURLToPath(new URL("../../../agent/", import.meta.url));
-    for (const file of ["install.sh", "waycloud-agent.sh"]) {
-      scope.get(`/${file}`, async (_req, reply) => reply.header("content-type", "text/x-shellscript; charset=utf-8").send(await readFile(AGENT_DIR + file)));
+    for (const file of ["install.sh", "waycloud-agent.sh", "waycloud-agent.sh.sig"]) {
+      scope.get(`/${file}`, async (_req, reply) => reply.header("content-type", "text/x-shellscript; charset=utf-8").send(await readFile(join(ctx.settings.agentDir ?? AGENT_DIR, file))));
     }
 
     scope.post("/jobs/next", async (req, reply) => {
