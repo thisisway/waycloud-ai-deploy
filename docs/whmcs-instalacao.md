@@ -57,3 +57,14 @@ O cadastro pela página deixou de esperar e-mails e notificações no caminho do
 - O e-mail de definição de senha é enviado depois que a resposta sai (`fastcgi_finish_request`).
 - Addon de terceiros `lknhooknotification`: a chamada da API de WhatsApp roda depois da resposta em requisições web e tem timeout (5 s de conexão, 20 s total). Ver `WAYCLOUD_PATCH.txt` na pasta do addon; reaplicar após atualizar o addon (originais em `*.orig-AAAAMMDD`).
 - Hook `mercadopago_hooks.php` desativado (`.php_old`): o gateway não está ativo e o hook gerava um aviso de arquivo inexistente a cada execução do cron.
+
+## Venda de domínios pela página (addon 0.6.0)
+
+Na etapa "Domínio" o cliente pode registrar um domínio com a Way Cloud:
+
+1. Busca (`domain_search`): consulta o WHMCS (`DomainWhois`) e mostra só o que algum registrador vende (Umbler para `.br`, Stargate para os demais), com o preço de 1 ano da tabela do WHMCS.
+2. Pedido (`domain_order`): grava o endereço real no cliente (o cadastro rápido usa um endereço provisório e os registradores exigem um real) e cria um pedido de registro de 1 ano com os nameservers padrão do WHMCS (ns1/ns2.waycloud.com.br), sem e-mails do WHMCS. O Pix da fatura aparece na própria página.
+3. Depois de pago, o WHMCS registra o domínio sozinho (auto-registro do TLD). O serviço acompanha (`domain_order_status`, a cada minuto e enquanto a página está aberta) e, com o domínio ativo, liga o site a ele pelo fluxo de nameservers: zona DNS no Plesk, certificado e troca do domínio principal, sem nada para o cliente configurar.
+4. Se o registrador recusar, o hook `AfterRegistrarRegistrationFailed` avisa o administrador e a página diz ao cliente que a equipe já foi avisada. Pedido não pago em 3 dias é cancelado (pedido e fatura); o cliente também pode cancelar pela página enquanto não pagou.
+
+Para mudar os preços ou terminações vendidas, use Configurações > Preços de Domínios do WHMCS: a página lê dali.

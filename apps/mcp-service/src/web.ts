@@ -2,7 +2,8 @@ import { readFileSync } from "node:fs";
 import type { FastifyInstance } from "fastify";
 import { z } from "zod";
 import { CICLOS, erro, ok, sessaoId } from "@waycloud/shared";
-import { AddonError } from "./addon.js";
+import { AddonError, type PixCharge } from "./addon.js";
+import { advancePurchase, boughtHere, buyDomain, currentPurchase, cancelPurchase, candidates, openPurchase, TEXTO_COMPRA } from "./domain-sales.js";
 import type { ToolContext } from "./mcp/tools/define.js";
 import { cancelDomainRequest, checkOne, dnsInstructions, dnsTarget, inspectDomain, latestDomainRequest, normalizeDomain, requestDomain, systemResolver, TEXTO_ERRO, TEXTO_STATUS, type DomainRow } from "./domains.js";
 import { PlansUnavailable } from "./plans.js";
@@ -52,6 +53,12 @@ const signupBody = z
 const FIELDS = new Set(["nome", "email", "doc_numero", "telefone", "aceite", "_form"]);
 
 /** Best-effort abuse limits (memory only: they reset on a restart). Each sign-up can create a WHMCS client and send an e-mail. */
+/** What the page gets of a Pix. The image goes into an <img src>: only a PNG data URL of sane size is passed on. */
+function pixBody(pix: PixCharge) {
+  const qr = /^data:image\/png;base64,[A-Za-z0-9+/=]+$/.test(pix.qrImage) && pix.qrImage.length < 40_000 ? pix.qrImage : null;
+  return { copia_cola: pix.copyPaste.slice(0, 1000), qr, valor_centavos: pix.amountCents, expira_em: pix.expiresAt };
+}
+
 export class RateLimit {
   private hits = new Map<string, number[]>();
   constructor(private windowMs: number, private now: () => number = Date.now) {}
@@ -107,13 +114,14 @@ export function registerWeb(app: FastifyInstance, ctx: ToolContext) {
   const inspectBody = z.object({ sessao_id: sessaoId, dominio: z.string().min(3).max(300) }).strict();
   const sessionOnly = z.object({ sessao_id: sessaoId }).strict();
   const domainLimit = new RateLimit(10 * 60_000);
-  const view = async (row: DomainRow) => ({
+  const view = async (row: DomainRow, sessionId: string) => ({
     ok: true,
     status: row.status,
     dominio: row.domain,
     metodo: row.method,
     https: row.ssl === true,
     mensagem: TEXTO_STATUS[row.status],
+    comprado: await boughtHere(ctx.db, sessionId, row.domain), // bought here: its nameservers are ours already, nothing for the customer to do
     // The records to create are ours (target name and its IP): never built from what the browser sent.
     ...(row.status === "waiting_dns" ? { dns: dnsInstructions(row.domain, await dnsTarget(ctx.resolver ?? systemResolver, ctx.settings.siteTargetHost), ctx.settings.nameservers) } : {}),
   });
@@ -127,7 +135,7 @@ export function registerWeb(app: FastifyInstance, ctx: ToolContext) {
     if (!session) return send(401, erro("SESSAO_INVALIDA"));
     const r = await requestDomain(ctx, session.id, b.data.dominio, b.data.metodo);
     if (!r.ok) return send(r.codigo === "DOMINIO_EM_USO" ? 409 : 422, { ok: false, codigo: r.codigo, mensagem: TEXTO_ERRO[r.codigo] });
-    return send(200, await view(r.row));
+    return send(200, await view(r.row, session.id));
   });
 
   // Read-only look at the domain's DNS, to recommend the safest way to point it (nothing is created).
@@ -157,7 +165,95 @@ export function registerWeb(app: FastifyInstance, ctx: ToolContext) {
       await checkOne(ctx, row.id, ctx.resolver ?? systemResolver); // the visitor is looking: do not make them wait for the timer
       row = (await latestDomainRequest(ctx.db, session.id))!;
     }
-    return send(200, await view(row));
+    return send(200, await view(row, session.id));
+  });
+
+  // ---- buying a domain from us (needs the paid site: the WHMCS client comes from its checkout) ----
+  const searchBody = z.object({ sessao_id: sessaoId, nome: z.string().min(2).max(120) }).strict();
+  const addressBody = z.object({ cep: z.string().max(12), logradouro: z.string().max(100), numero: z.string().max(12), complemento: z.string().max(60).default(""), bairro: z.string().max(80), cidade: z.string().max(80), uf: z.string().max(2) }).strict();
+  const buyBody = z.object({ sessao_id: sessaoId, dominio: z.string().min(3).max(253), endereco: addressBody }).strict();
+  const BUY_FIELDS = new Set(["dominio", "cep", "logradouro", "numero", "complemento", "bairro", "cidade", "uf", "_form"]);
+  const BUY_ERRO = {
+    SEM_PLANO_ATIVO: [409, "Conclua a contratação do plano antes de registrar um domínio."],
+    COMPRA_EM_ANDAMENTO: [409, "Você já tem um domínio em andamento. Conclua ou cancele o pedido atual."],
+    DOMINIO_INVALIDO: [422, "Esse domínio não parece válido. Digite algo como meusite.com.br."],
+    DOMINIO_EM_USO: [409, "Esse domínio não está disponível."],
+    INDISPONIVEL: [422, "Não foi possível criar o pedido do domínio. Confira os dados e tente de novo."],
+  } as const;
+
+  app.post("/web/domain/search", { bodyLimit: 2 * 1024 }, async (req, reply) => {
+    const send = (status: number, body: object) => reply.code(status).header("cache-control", "no-store").send(body);
+    const b = searchBody.safeParse(req.body);
+    if (!b.success) return send(400, erro("ENTRADA_INVALIDA"));
+    if (domainLimit.tooMany(`search:${b.data.sessao_id}`, 40)) return send(429, erro("LIMITE_EXCEDIDO"));
+    const session = await findSession(ctx.db, b.data.sessao_id);
+    if (!session) return send(401, erro("SESSAO_INVALIDA"));
+    const names = candidates(b.data.nome, ctx.settings.previewUrlTemplate);
+    if (!names.length) return send(422, { ok: false, codigo: "DOMINIO_INVALIDO", mensagem: TEXTO_ERRO.DOMINIO_INVALIDO });
+    if (!ctx.addon) return send(503, erro("CHECKOUT_INDISPONIVEL"));
+    try {
+      const offers = await ctx.addon.domainSearch(names);
+      return send(200, { ok: true, resultados: offers.map((o) => ({ dominio: o.domain, disponivel: o.available, valor_centavos: o.priceCents })) });
+    } catch {
+      return send(503, erro("CHECKOUT_INDISPONIVEL"));
+    }
+  });
+
+  app.post("/web/domain/buy", { bodyLimit: 4 * 1024 }, async (req, reply) => {
+    const send = (status: number, body: object) => reply.code(status).header("cache-control", "no-store").send(body);
+    const b = buyBody.safeParse(req.body);
+    if (!b.success) return send(400, erro("ENTRADA_INVALIDA"));
+    if (domainLimit.tooMany(`buy:${b.data.sessao_id}`, 8)) return send(429, erro("LIMITE_EXCEDIDO"));
+    const session = await findSession(ctx.db, b.data.sessao_id);
+    if (!session) return send(401, erro("SESSAO_INVALIDA"));
+    try {
+      const r = await buyDomain(ctx, session.id, b.data.dominio, b.data.endereco);
+      if (!r.ok) {
+        const [status, mensagem] = BUY_ERRO[r.codigo];
+        const errors = Object.fromEntries(Object.entries(r.errors ?? {}).filter(([k]) => BUY_FIELDS.has(k)).map(([k, v]) => [k, v.slice(0, 200)]));
+        return send(status, { ok: false, codigo: r.codigo, mensagem, errors });
+      }
+      return send(200, { ok: true, dominio: r.purchase.domain, valor_centavos: r.purchase.price_cents, pix: r.pix ? pixBody(r.pix) : null, fatura_url: r.redirect });
+    } catch (e) {
+      console.error(JSON.stringify({ msg: "domain purchase failed", error: e instanceof AddonError ? e.code : "unexpected" })); // never the address
+      return send(502, erro("CHECKOUT_INDISPONIVEL"));
+    }
+  });
+
+  app.post("/web/domain/buy/status", { bodyLimit: 2 * 1024 }, async (req, reply) => {
+    const send = (status: number, body: object) => reply.code(status).header("cache-control", "no-store").send(body);
+    const b = sessionOnly.safeParse(req.body);
+    if (!b.success) return send(400, erro("ENTRADA_INVALIDA"));
+    if (domainLimit.tooMany(`buystatus:${b.data.sessao_id}`, 240)) return send(429, erro("LIMITE_EXCEDIDO"));
+    const session = await findSession(ctx.db, b.data.sessao_id);
+    if (!session) return send(401, erro("SESSAO_INVALIDA"));
+    const p = await currentPurchase(ctx.db, session.id);
+    if (!p) return send(200, { ok: true, status: "none" });
+    const status = await advancePurchase(ctx, p); // the visitor is looking: do not make them wait for the timer
+    return send(200, { ok: true, status, dominio: p.domain, valor_centavos: p.price_cents, mensagem: TEXTO_COMPRA[status] });
+  });
+
+  // The Pix of the purchase in progress (the page was reopened before paying).
+  app.post("/web/domain/buy/pix", { bodyLimit: 2 * 1024 }, async (req, reply) => {
+    const send = (status: number, body: object) => reply.code(status).header("cache-control", "no-store").send(body);
+    const b = sessionOnly.safeParse(req.body);
+    if (!b.success) return send(400, erro("ENTRADA_INVALIDA"));
+    if (domainLimit.tooMany(`buypix:${b.data.sessao_id}`, 30)) return send(429, erro("LIMITE_EXCEDIDO"));
+    const session = await findSession(ctx.db, b.data.sessao_id);
+    if (!session) return send(401, erro("SESSAO_INVALIDA"));
+    const p = await openPurchase(ctx.db, session.id);
+    if (!p || p.status !== "awaiting_payment" || !ctx.addon) return send(200, { ok: false });
+    const pix = await ctx.addon.domainOrderPix({ sessionId: session.id, checkoutId: Number(p.checkout_id), orderId: Number(p.order_id) }).catch(() => null);
+    return send(200, pix ? { ok: true, ...pixBody(pix) } : { ok: false });
+  });
+
+  app.post("/web/domain/buy/cancel", { bodyLimit: 2 * 1024 }, async (req, reply) => {
+    const send = (status: number, body: object) => reply.code(status).header("cache-control", "no-store").send(body);
+    const b = sessionOnly.safeParse(req.body);
+    if (!b.success) return send(400, erro("ENTRADA_INVALIDA"));
+    const session = await findSession(ctx.db, b.data.sessao_id);
+    if (!session) return send(401, erro("SESSAO_INVALIDA"));
+    return send(200, { ok: true, cancelado: await cancelPurchase(ctx, session.id) });
   });
 
   app.post("/web/domain/cancel", { bodyLimit: 2 * 1024 }, async (req, reply) => {
@@ -184,9 +280,7 @@ export function registerWeb(app: FastifyInstance, ctx: ToolContext) {
     try {
       const pix = await ctx.addon.pixCharge({ sessionId: session.id, checkoutId });
       if (!pix) return send(200, { ok: false });
-      // The image goes into an <img src>: accept only a PNG data URL of sane size.
-      const qr = /^data:image\/png;base64,[A-Za-z0-9+/=]+$/.test(pix.qrImage) && pix.qrImage.length < 40_000 ? pix.qrImage : null;
-      return send(200, { ok: true, copia_cola: pix.copyPaste.slice(0, 1000), qr, valor_centavos: pix.amountCents, expira_em: pix.expiresAt });
+      return send(200, { ok: true, ...pixBody(pix) });
     } catch {
       return send(200, { ok: false }); // the page falls back to the invoice link
     }

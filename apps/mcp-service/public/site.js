@@ -1,4 +1,4 @@
-import { Api, brl, checkForm, ensureSession, getPix, maskDoc, maskPhone, postJson, sendZip, signup } from "./flow.js";
+import { Api, brl, checkAddress, checkForm, ensureSession, getPix, maskCep, maskDoc, maskPhone, postJson, sendZip, signup } from "./flow.js";
 import { startRibbons } from "./ribbons.js";
 
 const $ = (id) => document.getElementById(id);
@@ -230,10 +230,7 @@ async function showWaiting(onlyWithPix = false) {
   if (pix) {
     $("wait-title").textContent = "Pague com Pix";
     $("wait-msg").textContent = "Assim que o pagamento for confirmado, a publicação do seu site começa sozinha. Não precisa sair desta página.";
-    $("pix-amount").textContent = brl(pix.valor_centavos);
-    $("pix-code").value = pix.copia_cola;
-    $("pix-qr").hidden = !pix.qr;
-    if (pix.qr) $("pix-qr").src = pix.qr;
+    paintPix("pix", pix);
     $("checkout-link").textContent = "Prefere pagar com cartão ou boleto? Abrir a fatura";
   }
   view(3, "s-wait");
@@ -241,17 +238,28 @@ async function showWaiting(onlyWithPix = false) {
   return pix !== null;
 }
 
-$("pix-copy").addEventListener("click", async () => {
-  const code = $("pix-code");
-  try {
-    await navigator.clipboard.writeText(code.value);
-  } catch {
-    code.select(); // no clipboard permission: the code is selected so the visitor can copy it by hand
-    document.execCommand("copy");
-  }
-  $("pix-copy").textContent = "Código copiado";
-  setTimeout(() => ($("pix-copy").textContent = "Copiar código"), 2500);
-});
+/** Fills the Pix box whose element ids start with `prefix` (amount, QR image, copy-and-paste code). */
+function paintPix(prefix, pix) {
+  $(`${prefix}-amount`).textContent = brl(pix.valor_centavos);
+  $(`${prefix}-code`).value = pix.copia_cola;
+  $(`${prefix}-qr`).hidden = !pix.qr;
+  if (pix.qr) $(`${prefix}-qr`).src = pix.qr;
+}
+
+for (const button of document.querySelectorAll("[data-pix], #pix-copy")) {
+  const prefix = button.dataset.pix ?? "pix";
+  button.addEventListener("click", async () => {
+    const code = $(`${prefix}-code`);
+    try {
+      await navigator.clipboard.writeText(code.value);
+    } catch {
+      code.select(); // no clipboard permission: the code is selected so the visitor can copy it by hand
+      document.execCommand("copy");
+    }
+    button.textContent = "Código copiado";
+    setTimeout(() => (button.textContent = "Copiar código"), 2500);
+  });
+}
 
 async function waitPayment() {
   const me = ++run;
@@ -356,12 +364,13 @@ function showDone(note) {
   $("deploy-note").textContent = state.https === false ? HTTPS_PENDING_NOTE : (note ?? "");
   showNextDomain();
   void domainStatus(true); // an earlier request (or one in progress) opens the domain step right away
+  void followPurchase(true); // ...and so does a domain purchase that is not finished
 }
 
 // ---- 5. the domain step --------------------------------------------------------------------------------------------
 let domainRun = 0;
 let inspection = null; // what the DNS looked like when the customer typed the domain (drives the recommendation)
-const PANES = ["dp-choose", "dp-enter", "dp-wait", "dp-done"];
+const PANES = ["dp-choose", "dp-enter", "dp-buy-search", "dp-buy-address", "dp-buy-pay", "dp-wait", "dp-done"];
 const pane = (id) => PANES.forEach((p) => ($(p).hidden = p !== id));
 
 function showNextDomain() {
@@ -448,9 +457,9 @@ function applyDomain(d) {
   if (d.status === "cancelled" || d.status === "none") return true;
   openDomainStep("dp-wait");
   $("dp-domain").textContent = d.dominio;
-  $("dp-status").textContent = d.mensagem ?? "";
-  $("domain-cancel").hidden = d.status !== "waiting_dns";
-  const waiting = d.status === "waiting_dns" && d.dns;
+  $("dp-status").textContent = d.comprado && d.status === "waiting_dns" ? "O domínio é seu e já aponta para a Way Cloud. Falta só a internet reconhecer o registro novo, o que costuma levar alguns minutos. Você não precisa fazer nada." : (d.mensagem ?? "");
+  $("domain-cancel").hidden = d.status !== "waiting_dns" || d.comprado === true;
+  const waiting = d.status === "waiting_dns" && d.dns && !d.comprado;
   $("dp-instr").hidden = !waiting;
   $("dp-switch").hidden = !waiting;
   $("dp-reco").hidden = !(waiting && inspection && inspection.recomendado === d.metodo);
@@ -530,6 +539,137 @@ async function switchMethod() {
   }
 }
 
+// ---- 5b. buying a domain from us ---------------------------------------------------------------------------
+let offer = null; // the domain the visitor chose: { dominio, valor_centavos }
+let buyRun = 0;
+const ADDR = ["cep", "logradouro", "numero", "complemento", "bairro", "cidade", "uf"];
+const TEXTO_AGUARDANDO = "Assim que o pagamento for confirmado, a gente registra o domínio e configura o seu site nele. Você pode continuar nesta página.";
+const showBuyError = (field, msg) => {
+  const p = $(field === "_form" ? "e-buy-form" : field === "dominio" ? "e-buy-name" : `e-a-${field}`);
+  if (!p) return;
+  p.textContent = msg ?? "";
+  p.hidden = !msg;
+  if (ADDR.includes(field)) $(`a-${field}`).setAttribute("aria-invalid", msg ? "true" : "false");
+};
+const clearBuyErrors = () => [...ADDR, "_form", "dominio"].forEach((f) => showBuyError(f, ""));
+
+function offerRow(o) {
+  const li = document.createElement("li");
+  const name = document.createElement("div");
+  name.append(text("div", o.dominio, "off-name"), text("div", `${brl(o.valor_centavos)} no primeiro ano`, "off-price"));
+  const side = document.createElement("div");
+  side.className = "off-side";
+  if (o.disponivel === true) {
+    const pick = text("button", "Escolher", "btn");
+    pick.type = "button";
+    pick.addEventListener("click", () => chooseDomain(o));
+    side.append(pick);
+  } else {
+    li.classList.add("taken");
+    side.append(text("span", o.disponivel === false ? "Indisponível" : "Não consegui conferir", "off-price"));
+  }
+  li.append(name, side);
+  return li;
+}
+
+async function searchDomains(event) {
+  event.preventDefault();
+  clearBuyErrors();
+  const button = $("buy-search-submit");
+  button.disabled = true;
+  button.textContent = "Buscando...";
+  try {
+    const { status, body } = await postJson(api, "/web/domain/search", { sessao_id: state.sessao_id, nome: $("f-buy-name").value });
+    if (status !== 200 || !body.ok) {
+      $("buy-results").replaceChildren();
+      showBuyError("dominio", body.mensagem ?? body.mensagem_para_usuario ?? (status === 429 ? "Muitas buscas. Aguarde um pouco." : "Não consegui buscar agora. Tente de novo."));
+      return;
+    }
+    $("buy-results").replaceChildren(...body.resultados.map(offerRow));
+    if (!body.resultados.length) showBuyError("dominio", "Não vendemos domínios com essa terminação. Tente outro nome.");
+  } finally {
+    button.disabled = false;
+    button.textContent = "Buscar";
+  }
+}
+
+function chooseDomain(o) {
+  offer = o;
+  clearBuyErrors();
+  $("buy-chosen").textContent = `${o.dominio} · ${brl(o.valor_centavos)} por ano`;
+  pane("dp-buy-address");
+  $("a-cep").focus();
+}
+
+async function submitBuy(event) {
+  event.preventDefault();
+  clearBuyErrors();
+  const endereco = Object.fromEntries(ADDR.map((f) => [f, $(`a-${f}`).value.trim()]));
+  const local = checkAddress(endereco);
+  if (Object.keys(local).length) {
+    for (const [f, msg] of Object.entries(local)) showBuyError(f, msg);
+    $(`a-${Object.keys(local)[0]}`).focus();
+    return;
+  }
+  const button = $("buy-submit");
+  button.disabled = true;
+  button.textContent = "Criando o pedido...";
+  try {
+    const { status, body } = await postJson(api, "/web/domain/buy", { sessao_id: state.sessao_id, dominio: offer.dominio, endereco });
+    if (status === 200 && body.ok) return showBuyPay(body);
+    for (const [f, msg] of Object.entries(body.errors ?? {})) showBuyError(f, msg);
+    if (!Object.keys(body.errors ?? {}).length) showBuyError("_form", body.mensagem ?? body.mensagem_para_usuario ?? "Não consegui criar o pedido agora. Tente de novo em instantes.");
+  } finally {
+    button.disabled = false;
+    button.textContent = "Continuar para o pagamento";
+  }
+}
+
+/** The payment of a domain purchase (`b` is the /web/domain/buy answer). */
+function showBuyPay(b) {
+  openDomainStep("dp-buy-pay");
+  const pix = b.pix ?? null;
+  $("buy-domain").textContent = `${b.dominio} · ${brl(b.valor_centavos)} por ano`;
+  $("bpix").hidden = !pix;
+  if (pix) paintPix("bpix", pix);
+  $("buy-invoice").hidden = !b.fatura_url;
+  if (b.fatura_url) $("buy-invoice").href = b.fatura_url;
+  $("buy-status").textContent = TEXTO_AGUARDANDO;
+  $("buy-cancel").hidden = false;
+  void followPurchase();
+}
+
+/** Follows the purchase until it is registered (the normal domain step takes over), fails or is cancelled. `first`: the page was just opened. */
+async function followPurchase(first = false) {
+  const me = ++buyRun;
+  for (let i = 0; i < 720 && me === buyRun; i++) {
+    const { status, body } = await postJson(api, "/web/domain/buy/status", { sessao_id: state.sessao_id });
+    const st = status === 200 ? body.status : undefined;
+    if (st === "none" || st === "canceled") return first ? undefined : pane("dp-choose");
+    if (st === "registered") {
+      buyRun++;
+      return void domainStatus(); // the request to point the site at the domain already exists
+    }
+    if (st) {
+      if (first) {
+        // The page was reopened in the middle of a purchase: show it again (the charge is reused, not created twice).
+        openDomainStep("dp-buy-pay");
+        $("buy-domain").textContent = `${body.dominio} · ${brl(body.valor_centavos)} por ano`;
+        $("buy-invoice").hidden = true;
+        $("buy-cancel").hidden = st !== "awaiting_payment";
+        const pix = st === "awaiting_payment" ? await getPix(api, state.sessao_id, "/web/domain/buy/pix") : null;
+        $("bpix").hidden = !pix;
+        if (pix) paintPix("bpix", pix);
+      }
+      $("buy-status").textContent = st === "awaiting_payment" ? TEXTO_AGUARDANDO : body.mensagem;
+      if (st !== "awaiting_payment") ($("bpix").hidden = true), ($("buy-cancel").hidden = true);
+      if (st === "failed") return;
+    }
+    first = false;
+    await sleep(5_000);
+  }
+}
+
 // ---- wiring -------------------------------------------------------------------------------
 const drop = $("drop");
 const input = $("file");
@@ -576,6 +716,19 @@ $("domain-start").addEventListener("click", () => openDomainStep());
 $("domain-resume").addEventListener("click", () => openDomainStep());
 $("domain-later").addEventListener("click", () => (save({ domain_later: true }), showNextDomain()));
 $("choice-have").addEventListener("click", () => openDomainStep("dp-enter"));
+$("choice-buy").addEventListener("click", () => (clearBuyErrors(), pane("dp-buy-search"), $("f-buy-name").focus()));
+$("buy-search-form").addEventListener("submit", searchDomains);
+$("buy-search-back").addEventListener("click", () => pane("dp-choose"));
+$("buy-address-form").addEventListener("submit", submitBuy);
+$("buy-address-back").addEventListener("click", () => pane("dp-buy-search"));
+$("a-cep").addEventListener("input", (e) => (e.target.value = maskCep(e.target.value)));
+$("buy-cancel").addEventListener("click", async () => {
+  buyRun++;
+  const { body } = await postJson(api, "/web/domain/buy/cancel", { sessao_id: state.sessao_id });
+  if (body.cancelado) return pane("dp-choose");
+  showAlert("O pagamento já foi confirmado, então não dá para cancelar por aqui. Fale com a gente pelo chat se precisar.");
+  void followPurchase();
+});
 $("domain-back").addEventListener("click", () => (view(4, "s-deploy"), showNextDomain()));
 $("enter-back").addEventListener("click", () => pane("dp-choose"));
 $("dp-switch").addEventListener("click", switchMethod);

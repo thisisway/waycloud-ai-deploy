@@ -255,3 +255,14 @@ code { flex: 1; min-width: 0; font-family: ui-monospace, "SF Mono", Consolas, mo
 .pix-code { display: flex; gap: 8px; margin-top: 12px; }
 .pix-code input { min-width: 0; flex: 1; font: inherit; font-size: 12.5px; padding: 10px 12px; border: 1px solid var(--line-strong); border-radius: 10px; background: var(--white); color: var(--ink-2); }
 @media (max-width: 560px) { .pix { flex-direction: column; align-items: center; } .pix-side { width: 100%; } .pix-code { flex-direction: column; } }
+
+/* Buying a domain */
+.offers { list-style: none; margin: 14px 0; display: grid; gap: 8px; }
+.offers li { display: flex; align-items: center; gap: 12px; justify-content: space-between; padding: 12px 14px; border: 1.5px solid var(--line-strong); border-radius: var(--radius); background: var(--white); }
+.offers .off-name { font-weight: 700; word-break: break-all; }
+.offers .off-price { font-size: 13px; color: var(--ink-3); }
+.offers li.taken { opacity: 0.6; }
+.offers .off-side { display: flex; align-items: center; gap: 12px; flex: none; }
+.pair2 { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+.pair2.city { grid-template-columns: 2fr 1fr; }
+@media (max-width: 420px) { .pair2 { grid-template-columns: 1fr; } .offers li { flex-direction: column; align-items: flex-start; } }

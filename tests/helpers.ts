@@ -61,3 +61,9 @@ export async function testCtx(overrides: Partial<ToolContext["settings"]> = {}) 
   };
   return { ctx, db, storage, root, close: async () => (await db.close(), await rm(root, { recursive: true, force: true })) };
 }
+
+const unused = async (): Promise<never> => {
+  throw new Error("unused");
+};
+/** For fake AddonClients of tests that do not sell domains. */
+export const unusedDomainSales = { domainSearch: unused, domainOrder: unused, domainOrderStatus: unused, domainOrderPix: unused, domainOrderCancel: unused };

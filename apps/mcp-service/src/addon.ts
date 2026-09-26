@@ -51,12 +51,45 @@ export interface PixCharge {
   expiresAt: string;
 }
 
+export interface DomainOffer {
+  domain: string;
+  /** null: the lookup could not tell */
+  available: boolean | null;
+  priceCents: number;
+}
+
+export type DomainOrderStatus = "awaiting_payment" | "registering" | "registered" | "failed" | "canceled";
+
+export interface Address {
+  cep: string;
+  logradouro: string;
+  numero: string;
+  complemento: string;
+  bairro: string;
+  cidade: string;
+  uf: string;
+}
+
+export interface DomainOrderResult {
+  ok: boolean;
+  errors: Record<string, string>;
+  orderId: number | null;
+  invoiceId: number | null;
+  redirect: string | null;
+  priceCents: number | null;
+}
+
 export interface AddonClient {
   /** Tells WHMCS the service now lives on the customer's own domain. */
   updateServiceDomain(req: { serviceId: number; domain: string }): Promise<void>;
   registerCheckout(req: { sessionId: string; pid: number; cycle: "monthly" | "annually"; form: SignupForm }): Promise<SignupResult>;
   /** The Pix of the checkout's invoice (only for the session that made it); null when there is none to show. */
   pixCharge(req: { sessionId: string; checkoutId: number }): Promise<PixCharge | null>;
+  domainSearch(domains: string[]): Promise<DomainOffer[]>;
+  domainOrder(req: { sessionId: string; checkoutId: number; domain: string; address: Address }): Promise<DomainOrderResult>;
+  domainOrderStatus(req: { sessionId: string; checkoutId: number; orderId: number }): Promise<{ status: DomainOrderStatus; domain: string | null }>;
+  domainOrderPix(req: { sessionId: string; checkoutId: number; orderId: number }): Promise<PixCharge | null>;
+  domainOrderCancel(req: { sessionId: string; checkoutId: number; orderId: number }): Promise<boolean>;
   createCheckout(req: { sessionId: string; pid: number; cycle: "monthly" | "annually" }): Promise<{ checkoutId: number; url: string; expiresAt: string }>;
   plans(): Promise<AddonPlan[]>;
 }
@@ -70,6 +103,16 @@ const signupResponse = z.object({
   fallback_url: z.string().url().nullable(),
 });
 const pixResponse = z.object({ ok: z.boolean(), copy_paste: z.string().optional(), qr_image: z.string().optional(), amount_cents: z.number().int().optional(), expires_at: z.string().optional() });
+const domainSearchResponse = z.object({ results: z.array(z.object({ domain: z.string(), available: z.boolean().nullable(), price_cents: z.number().int() })) });
+const domainOrderResponse = z.object({
+  ok: z.boolean(),
+  errors: z.union([z.record(z.string()), z.array(z.never())]),
+  order_id: z.number().int().nullable(),
+  invoice_id: z.number().int().nullable(),
+  redirect: z.string().url().nullable(),
+  price_cents: z.number().int().nullable(),
+});
+const domainStatusResponse = z.object({ status: z.enum(["awaiting_payment", "registering", "registered", "failed", "canceled"]), domain: z.string().nullable() });
 const plansResponse = z.object({
   plans: z.array(z.object({ type: z.enum(["static", "php"]), pid: z.number().int(), name: z.string(), monthly_cents: z.number().int(), annual_cents: z.number().int() })),
 });
@@ -130,6 +173,40 @@ export function httpAddonClient(cfg: AddonConfig): AddonClient {
       const d = parsed.data;
       if (!d.ok || !d.copy_paste || d.amount_cents === undefined) return null;
       return { copyPaste: d.copy_paste, qrImage: d.qr_image ?? "", amountCents: d.amount_cents, expiresAt: d.expires_at ?? "" };
+    },
+
+    async domainSearch(domains) {
+      const parsed = domainSearchResponse.safeParse(await call({ action: "domain_search", domains }));
+      if (!parsed.success) throw new AddonError("bad_response", 200);
+      return parsed.data.results.map((d) => ({ domain: d.domain, available: d.available, priceCents: d.price_cents }));
+    },
+
+    async domainOrder(r) {
+      const parsed = domainOrderResponse.safeParse(await call({ action: "domain_order", session_id: r.sessionId, checkout_id: r.checkoutId, domain: r.domain, address: r.address }));
+      if (!parsed.success) throw new AddonError("bad_response", 200);
+      const d = parsed.data;
+      if (d.redirect && new URL(d.redirect).host !== new URL(cfg.url).host) throw new AddonError("unexpected_host", 200); // the customer opens it
+      return { ok: d.ok, errors: Array.isArray(d.errors) ? {} : d.errors, orderId: d.order_id, invoiceId: d.invoice_id, redirect: d.redirect, priceCents: d.price_cents };
+    },
+
+    async domainOrderStatus(r) {
+      const parsed = domainStatusResponse.safeParse(await call({ action: "domain_order_status", session_id: r.sessionId, checkout_id: r.checkoutId, order_id: r.orderId }));
+      if (!parsed.success) throw new AddonError("bad_response", 200);
+      return parsed.data;
+    },
+
+    async domainOrderPix(r) {
+      const parsed = pixResponse.safeParse(await call({ action: "domain_order_pix", session_id: r.sessionId, checkout_id: r.checkoutId, order_id: r.orderId }));
+      if (!parsed.success) throw new AddonError("bad_response", 200);
+      const d = parsed.data;
+      if (!d.ok || !d.copy_paste || d.amount_cents === undefined) return null;
+      return { copyPaste: d.copy_paste, qrImage: d.qr_image ?? "", amountCents: d.amount_cents, expiresAt: d.expires_at ?? "" };
+    },
+
+    async domainOrderCancel(r) {
+      const parsed = z.object({ ok: z.boolean() }).safeParse(await call({ action: "domain_order_cancel", session_id: r.sessionId, checkout_id: r.checkoutId, order_id: r.orderId }));
+      if (!parsed.success) throw new AddonError("bad_response", 200);
+      return parsed.data.ok;
     },
 
     async createCheckout(r) {

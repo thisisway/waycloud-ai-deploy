@@ -37,6 +37,12 @@ add_hook('AfterModuleCreateFailed', 1, static function (array $vars) use ($waycl
     $waycloudGuard('AfterModuleCreateFailed', static fn () => Container::checkout()->onModuleCreateFailed((int) ($p['serviceid'] ?? 0), (string) ($vars['failureResponseMessage'] ?? 'unknown')));
 });
 
+// A paid domain the registrar refused: the team finishes it by hand and the public page tells the customer we are on it.
+add_hook('AfterRegistrarRegistrationFailed', 1, static function (array $vars) use ($waycloudGuard): void {
+    $p = (array) ($vars['params'] ?? []);
+    $waycloudGuard('AfterRegistrarRegistrationFailed', static fn () => Container::checkout()->domains()->onRegistrationFailed((int) ($p['domainid'] ?? $vars['domainid'] ?? 0), (string) ($vars['error'] ?? 'unknown')));
+});
+
 // The invoice page of an AI checkout gets a way back to the public site (which keeps following the order).
 add_hook('ClientAreaFooterOutput', 1, static function (array $vars) use ($waycloudGuard): string {
     $html = '';

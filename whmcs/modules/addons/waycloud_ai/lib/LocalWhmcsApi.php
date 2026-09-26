@@ -125,6 +125,81 @@ final class LocalWhmcsApi implements WhmcsApi
         return ['copy_paste' => (string) $c->copy_paste, 'qr_image' => (string) $c->qr_image, 'amount_cents' => (int) round(((float) $c->amount) * 100), 'expires_at' => (string) $c->expires_at];
     }
 
+    public function domainAvailable(string $domain): ?bool
+    {
+        try {
+            $r = $this->call('DomainWhois', ['domain' => $domain]);
+        } catch (WhmcsApiError) {
+            return null;
+        }
+        return match ($r['status'] ?? '') {
+            'available' => true,
+            'unavailable' => false,
+            default => null,
+        };
+    }
+
+    public function domainPriceCents(string $domain): ?int
+    {
+        $best = null;
+        foreach (Capsule::table('tbldomainpricing')->where('autoreg', '!=', '')->get(['id', 'extension']) as $t) {
+            if (str_ends_with($domain, (string) $t->extension) && strlen($domain) > strlen((string) $t->extension) + 1 && ($best === null || strlen((string) $t->extension) > strlen((string) $best->extension))) {
+                $best = $t;
+            }
+        }
+        if ($best === null) {
+            return null;
+        }
+        $currency = (int) (Capsule::table('tblcurrencies')->where('default', 1)->value('id') ?: 1);
+        $price = Capsule::table('tblpricing')->where('type', 'domainregister')->where('relid', $best->id)->where('currency', $currency)->value('msetupfee');
+        return $price !== null && (float) $price > 0 ? (int) round(((float) $price) * 100) : null;
+    }
+
+    public function updateClientAddress(int $clientId, array $address): void
+    {
+        $this->call('UpdateClient', ['clientid' => $clientId, 'country' => 'BR'] + $address);
+    }
+
+    public function addDomainOrder(int $clientId, string $domain, string $paymentMethod): array
+    {
+        $ns = static fn (string $k): string => (string) Capsule::table('tblconfiguration')->where('setting', $k)->value('value');
+        $r = $this->call('AddOrder', [
+            'clientid' => $clientId,
+            'paymentmethod' => $paymentMethod,
+            'domain' => [$domain],
+            'domaintype' => ['register'],
+            'regperiod' => [1],
+            'nameserver1' => $ns('DefaultNameserver1'), // the WHMCS defaults are Way Cloud's own: the site is configured on them by itself
+            'nameserver2' => $ns('DefaultNameserver2'),
+            'noemail' => true,
+            'noinvoiceemail' => true,
+        ]);
+        return ['orderid' => (int) $r['orderid'], 'invoiceid' => (int) ($r['invoiceid'] ?? 0)];
+    }
+
+    public function domainOrderInfo(int $orderId): ?array
+    {
+        $o = Capsule::table('tblorders')->where('id', $orderId)->first(['userid', 'invoiceid']);
+        $d = Capsule::table('tbldomains')->where('orderid', $orderId)->first(['id', 'domain', 'status']);
+        if ($o === null || $d === null) {
+            return null;
+        }
+        return [
+            'client_id' => (int) $o->userid,
+            'invoice_id' => (int) $o->invoiceid,
+            'invoice_status' => (string) Capsule::table('tblinvoices')->where('id', $o->invoiceid)->value('status'),
+            'domain' => (string) $d->domain,
+            'domain_status' => (string) $d->status,
+            'domain_id' => (int) $d->id,
+        ];
+    }
+
+    public function cancelOrder(int $orderId, int $invoiceId): void
+    {
+        $this->call('CancelOrder', ['orderid' => $orderId, 'noemail' => true]);
+        $this->call('UpdateInvoice', ['invoiceid' => $invoiceId, 'status' => 'Cancelled']);
+    }
+
     public function createSsoUrl(int $clientId, string $path): ?string
     {
         try {

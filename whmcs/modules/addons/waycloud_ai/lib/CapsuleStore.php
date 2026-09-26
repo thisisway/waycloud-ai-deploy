@@ -114,6 +114,11 @@ final class CapsuleStore implements Store
         ]);
     }
 
+    public function hasEvent(string $type, string $ref): bool
+    {
+        return Capsule::table('mod_waycloud_events')->where('type', $type)->where('ref', $ref)->exists();
+    }
+
     public function recentCheckouts(int $limit): array
     {
         $out = [];

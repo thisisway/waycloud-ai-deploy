@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 // @ts-expect-error plain ESM served to the browser, without type declarations
-import { checkForm, maskDoc, maskPhone, getPix, signup } from "../../apps/mcp-service/public/flow.js";
+import { checkForm, maskDoc, maskPhone, checkAddress, getPix, maskCep, signup } from "../../apps/mcp-service/public/flow.js";
 
 describe("input masks", () => {
   it.each([
@@ -75,5 +75,16 @@ describe("getPix()", () => {
     expect(await getPix(withBody(200, { ok: false }), "s")).toBeNull();
     expect(await getPix(withBody(401, { ok: true, copia_cola: "x" }), "s")).toBeNull();
     expect(await getPix({ base: "http://x", fetch: async () => Promise.reject(new Error("offline")) }, "s")).toBeNull();
+  });
+});
+
+describe("address for a domain purchase", () => {
+  it("masks the CEP while typing", () => {
+    expect([maskCep("01310"), maskCep("013101"), maskCep("01310-100 extra"), maskCep("abc")]).toEqual(["01310", "01310-1", "01310-100", ""]);
+  });
+  it("flags what is missing, and passes a complete address", () => {
+    const ok = { cep: "01310-100", logradouro: "Avenida Paulista", numero: "1000", complemento: "", bairro: "Bela Vista", cidade: "São Paulo", uf: "SP" };
+    expect(checkAddress(ok)).toEqual({});
+    expect(Object.keys(checkAddress({ ...ok, cep: "123", logradouro: "", numero: " ", bairro: "", cidade: "", uf: "" })).sort()).toEqual(["bairro", "cep", "cidade", "logradouro", "numero", "uf"]);
   });
 });

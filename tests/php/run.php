@@ -620,6 +620,72 @@ test('API action pix_charge gives the Pix only to the session that made the chec
     eq([200, ['ok' => false]], $call($e, ['action' => 'pix_charge', 'checkout_id' => 1, 'session_id' => SESSION]));
 });
 
+echo "\nDomain sales\n";
+$addr = ['cep' => '01310-100', 'logradouro' => 'Avenida Paulista', 'numero' => '1000', 'complemento' => '', 'bairro' => 'Bela Vista', 'cidade' => 'São Paulo', 'uf' => 'SP'];
+$buy = static function () use ($web, $validWeb): array {
+    $e = make();
+    $e['checkout']->registerFromWeb($web($validWeb)); // checkout 1, client created
+    return $e;
+};
+test('search answers only for endings a registrar sells, with the price and whether it is free', function () use ($call) {
+    $e = make();
+    [$s, $r] = $call($e, ['action' => 'domain_search', 'domains' => ['livre.com.br', 'ocupado.com.br', 'desconhecido.com.br', 'x.xyz', 'not a domain', 'livre.com']]);
+    eq(200, $s);
+    eq([['livre.com.br', true, 5000], ['ocupado.com.br', false, 5000], ['desconhecido.com.br', null, 5000], ['livre.com', null, 7900]], array_map(fn ($d) => [$d['domain'], $d['available'], $d['price_cents']], $r['results']));
+});
+test('ordering saves the real address, creates a domain order with the Pix invoice and returns the invoice link', function () use ($call, $buy, $addr) {
+    $e = $buy();
+    [$s, $r] = $call($e, ['action' => 'domain_order', 'checkout_id' => 1, 'session_id' => SESSION, 'domain' => 'livre.com.br', 'address' => $addr]);
+    eq([200, true, 7000, 7001, 5000], [$s, $r['ok'], $r['order_id'], $r['invoice_id'], $r['price_cents']]);
+    $calls = array_column($e['whmcs']->calls, null, 0);
+    eq(['Avenida Paulista, 1000', 'Bela Vista', 'São Paulo', 'SP', '01310-100'], array_values(array_intersect_key($calls['address'][1][1], array_flip(['address1', 'address2', 'city', 'state', 'postcode']))));
+    eq('livre.com.br', $calls['domainOrder'][1]['domain']);
+    eq('https://app.test/sso/abc', $r['redirect']);
+});
+test('ordering refuses bad addresses, taken or unsold domains, and another session', function () use ($call, $buy, $addr) {
+    $e = $buy();
+    $order = fn (array $over) => $call($e, array_merge(['action' => 'domain_order', 'checkout_id' => 1, 'session_id' => SESSION, 'domain' => 'livre.com.br', 'address' => $addr], $over));
+    [, $r] = $order(['address' => ['cep' => '123', 'uf' => 'XX'] + $addr]);
+    eq([false, ['cep', 'uf']], [$r['ok'], array_keys($r['errors'])]);
+    eq(['dominio'], array_keys($order(['domain' => 'ocupado.com.br'])[1]['errors']));
+    eq(['dominio'], array_keys($order(['domain' => 'livre.xyz'])[1]['errors']));
+    eq([404, ['error' => 'unknown_checkout']], $order(['session_id' => '11111111-1111-4111-8111-111111111111']));
+    eq(0, count(array_filter($e['whmcs']->calls, fn ($c) => $c[0] === 'domainOrder')), 'nothing was ordered');
+});
+test('a WHMCS failure alerts the admin and tells the customer to try again', function () use ($call, $buy, $addr) {
+    $e = $buy();
+    $e['whmcs']->failDomainOrder = 'boom';
+    [, $r] = $call($e, ['action' => 'domain_order', 'checkout_id' => 1, 'session_id' => SESSION, 'domain' => 'livre.com.br', 'address' => $addr]);
+    eq([false, ['_form']], [$r['ok'], array_keys($r['errors'])]);
+});
+test('status follows the order: unpaid, paid and registering, registered, failed, cancelled', function () use ($call, $buy, $addr) {
+    $e = $buy();
+    $call($e, ['action' => 'domain_order', 'checkout_id' => 1, 'session_id' => SESSION, 'domain' => 'livre.com.br', 'address' => $addr]);
+    $status = fn () => $call($e, ['action' => 'domain_order_status', 'checkout_id' => 1, 'session_id' => SESSION, 'order_id' => 7000])[1]['status'];
+    eq('awaiting_payment', $status());
+    $e['whmcs']->orderState = ['invoice_status' => 'Paid', 'domain_status' => 'Pending'];
+    eq('registering', $status());
+    $e['checkout']->domains()->onRegistrationFailed(55, 'registrar said no');
+    eq('failed', $status());
+    $e['whmcs']->orderState = ['invoice_status' => 'Paid', 'domain_status' => 'Active'];
+    eq('registered', $status());
+    eq([404, ['error' => 'unknown_order']], $call($e, ['action' => 'domain_order_status', 'checkout_id' => 1, 'session_id' => SESSION, 'order_id' => 1]));
+});
+test('the Pix of the domain invoice and cancelling an unpaid order', function () use ($call, $buy, $addr) {
+    $e = $buy();
+    $call($e, ['action' => 'domain_order', 'checkout_id' => 1, 'session_id' => SESSION, 'domain' => 'livre.com.br', 'address' => $addr]);
+    $req = ['checkout_id' => 1, 'session_id' => SESSION, 'order_id' => 7000];
+    eq('000201PIXCODE', $call($e, ['action' => 'domain_order_pix'] + $req)[1]['copy_paste']);
+    eq([200, ['ok' => true]], $call($e, ['action' => 'domain_order_cancel'] + $req));
+    eq(['cancelOrder', [7000, 7001]], end($e['whmcs']->calls));
+    eq('canceled', $call($e, ['action' => 'domain_order_status'] + $req)[1]['status']);
+    // a paid order cannot be cancelled from the page
+    $e2 = $buy();
+    $call($e2, ['action' => 'domain_order', 'checkout_id' => 1, 'session_id' => SESSION, 'domain' => 'livre.com.br', 'address' => $addr]);
+    $e2['whmcs']->orderState = ['invoice_status' => 'Paid', 'domain_status' => 'Pending'];
+    eq([200, ['ok' => false]], $call($e2, ['action' => 'domain_order_cancel'] + $req));
+});
+
 echo "\nInvoice page banner\n";
 test('AI invoices get the way back; paid ones also redirect; other invoices and pages get nothing', function () use ($web, $validWeb) {
     $e = make();

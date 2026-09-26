@@ -8,7 +8,7 @@ import { TOOLS } from "../../apps/mcp-service/src/mcp/tools/index.js";
 import type { ToolContext } from "../../apps/mcp-service/src/mcp/tools/define.js";
 import { buildApp } from "../../apps/mcp-service/src/server.js";
 import { findSession } from "../../apps/mcp-service/src/sessions.js";
-import { testCtx } from "../helpers.js";
+import { testCtx, unusedDomainSales } from "../helpers.js";
 
 const TOKEN_A = "a1".repeat(32);
 const TOKEN_B = "b2".repeat(32);
@@ -40,6 +40,7 @@ beforeAll(async () => {
   const addon = {
     plans: async () => [], createCheckout: async () => { throw new Error("unused"); }, registerCheckout: async () => { throw new Error("unused"); },
     updateServiceDomain: async (r) => { if (syncFails > 0) { syncFails--; throw Object.assign(new Error("x"), { code: "unreachable" }); } synced.push(r); },
+    ...unusedDomainSales,
     pixCharge: async () => null,
   } as AddonClient;
   ctx = { ...t.ctx, addon, resolver };

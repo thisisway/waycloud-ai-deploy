@@ -5,7 +5,7 @@ import type { ToolContext } from "../../apps/mcp-service/src/mcp/tools/define.js
 import { buildApp } from "../../apps/mcp-service/src/server.js";
 import { RateLimit } from "../../apps/mcp-service/src/web.js";
 import { findSession } from "../../apps/mcp-service/src/sessions.js";
-import { testCtx } from "../helpers.js";
+import { testCtx, unusedDomainSales } from "../helpers.js";
 
 type Req = Parameters<AddonClient["registerCheckout"]>[0];
 let base: ReturnType<typeof testCtx> extends Promise<infer T> ? T : never;
@@ -33,6 +33,7 @@ beforeAll(async () => {
     },
     plans: async () => [],
     updateServiceDomain: async () => {},
+    ...unusedDomainSales,
     pixCharge: async (r) => {
       pixCalls.push(r);
       return pixAnswer();

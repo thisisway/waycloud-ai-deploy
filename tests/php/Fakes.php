@@ -117,6 +117,16 @@ class MemoryStore implements Store
         $this->log[] = ['type' => $type, 'ref' => $ref, 'data' => $data];
     }
 
+    public function hasEvent(string $type, string $ref): bool
+    {
+        foreach ($this->log as $e) {
+            if ($e['type'] === $type && $e['ref'] === $ref) {
+                return true;
+            }
+        }
+        return false;
+    }
+
     public function recentCheckouts(int $limit): array
     {
         $rows = array_map(static function (array $c): array {
@@ -216,6 +226,59 @@ final class FakeWhmcs implements WhmcsApi
         if ($this->failReset !== null) {
             throw new WhmcsApiError($this->failReset);
         }
+    }
+
+    /** @var array<string,?bool> domain => available (null: lookup failed) */
+    public array $available = ['livre.com.br' => true, 'ocupado.com.br' => false];
+    /** @var array<string,int> ending => price in cents */
+    public array $prices = ['.com.br' => 5000, '.com' => 7900];
+    public ?array $domainOrder = null;
+    public ?string $failDomainOrder = null;
+    /** @var array<string,string> */
+    public array $orderState = ['invoice_status' => 'Unpaid', 'domain_status' => 'Pending'];
+
+    public function domainAvailable(string $domain): ?bool
+    {
+        return $this->available[$domain] ?? null;
+    }
+
+    public function domainPriceCents(string $domain): ?int
+    {
+        foreach ($this->prices as $ext => $cents) {
+            if (str_ends_with($domain, $ext) && strlen($domain) > strlen($ext) + 1) {
+                return $cents;
+            }
+        }
+        return null;
+    }
+
+    public function updateClientAddress(int $clientId, array $address): void
+    {
+        $this->calls[] = ['address', [$clientId, $address]];
+    }
+
+    public function addDomainOrder(int $clientId, string $domain, string $paymentMethod): array
+    {
+        $this->calls[] = ['domainOrder', compact('clientId', 'domain', 'paymentMethod')];
+        if ($this->failDomainOrder !== null) {
+            throw new WhmcsApiError($this->failDomainOrder);
+        }
+        $this->domainOrder = ['client_id' => $clientId, 'domain' => $domain];
+        return ['orderid' => 7000, 'invoiceid' => 7001];
+    }
+
+    public function domainOrderInfo(int $orderId): ?array
+    {
+        if ($this->domainOrder === null || $orderId !== 7000) {
+            return null;
+        }
+        return ['client_id' => $this->domainOrder['client_id'], 'invoice_id' => 7001, 'domain' => $this->domainOrder['domain'], 'domain_id' => 55] + $this->orderState;
+    }
+
+    public function cancelOrder(int $orderId, int $invoiceId): void
+    {
+        $this->calls[] = ['cancelOrder', [$orderId, $invoiceId]];
+        $this->orderState = ['invoice_status' => 'Cancelled', 'domain_status' => 'Cancelled'];
     }
 
     public ?array $pix = ['copy_paste' => '000201PIXCODE', 'qr_image' => 'data:image/png;base64,AAAA', 'amount_cents' => 3590, 'expires_at' => '2026-09-29 12:00:00'];

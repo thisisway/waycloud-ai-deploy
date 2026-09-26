@@ -62,6 +62,12 @@ final class Checkout
         return ['ok' => $r['ok'], 'errors' => $r['errors'], 'redirect' => $r['redirect'], 'checkout_id' => $c['id'], 'fallback_url' => $r['login_url'] !== null ? $this->checkoutUrl($c['token']) : null];
     }
 
+    /** Selling domains to this checkout's customer. */
+    public function domains(): DomainSales
+    {
+        return new DomainSales($this->store, $this->whmcs, $this->settings, $this->now);
+    }
+
     /**
      * The Pix of the invoice of an AI checkout, so the public page can show the QR code without sending the customer to WHMCS.
      * @param array<string,mixed> $req checkout_id, session_id (only the session that made the checkout gets it)

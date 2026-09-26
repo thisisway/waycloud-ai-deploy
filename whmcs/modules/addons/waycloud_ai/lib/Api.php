@@ -63,6 +63,16 @@ final class Api
                     return [200, $this->checkout->registerFromWeb($data)];
                 case 'pix_charge':
                     return [200, $this->checkout->pixCharge($data)];
+                case 'domain_search':
+                    return [200, $this->checkout->domains()->search($data)];
+                case 'domain_order':
+                    return [200, $this->checkout->domains()->order($data)];
+                case 'domain_order_status':
+                    return [200, $this->checkout->domains()->status($data)];
+                case 'domain_order_pix':
+                    return [200, $this->checkout->domains()->pix($data)];
+                case 'domain_order_cancel':
+                    return [200, $this->checkout->domains()->cancel($data)];
                 case 'plans':
                     return [200, ['plans' => $this->plans()]];
                 default:

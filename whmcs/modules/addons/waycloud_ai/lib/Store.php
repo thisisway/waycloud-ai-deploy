@@ -57,6 +57,8 @@ interface Store
     /** @param array<string,mixed> $data Never put personal data here. */
     public function logEvent(string $type, ?string $ref, array $data, int $now): void;
 
+    public function hasEvent(string $type, string $ref): bool;
+
     /** @return list<array<string,mixed>> */
     public function recentCheckouts(int $limit): array;
 

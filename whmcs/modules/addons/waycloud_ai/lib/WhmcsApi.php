@@ -31,6 +31,24 @@ interface WhmcsApi
      */
     public function pixCharge(int $invoiceId): ?array;
 
+    /** true/false from the WHMCS domain lookup, null when it could not tell. */
+    public function domainAvailable(string $domain): ?bool;
+
+    /** One-year registration price in the default currency, null when no registrar sells this ending. */
+    public function domainPriceCents(string $domain): ?int;
+
+    /** @param array<string,string> $address address1, address2, city, state, postcode @throws WhmcsApiError */
+    public function updateClientAddress(int $clientId, array $address): void;
+
+    /** An order that registers one domain for one year. @return array{orderid:int, invoiceid:int} @throws WhmcsApiError */
+    public function addDomainOrder(int $clientId, string $domain, string $paymentMethod): array;
+
+    /** @return array{client_id:int, invoice_id:int, invoice_status:string, domain:?string, domain_status:string, domain_id:int}|null */
+    public function domainOrderInfo(int $orderId): ?array;
+
+    /** Cancels the order and its (unpaid) invoice. @throws WhmcsApiError */
+    public function cancelOrder(int $orderId, int $invoiceId): void;
+
     /** Logged-in URL for the client, landing on $path (e.g. "viewinvoice.php?id=10"). */
     public function createSsoUrl(int $clientId, string $path): ?string;
 

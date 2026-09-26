@@ -6,7 +6,7 @@ import { AddonError, httpAddonClient, type AddonClient } from "../../apps/mcp-se
 import { TOOLS } from "../../apps/mcp-service/src/mcp/tools/index.js";
 import type { ToolContext } from "../../apps/mcp-service/src/mcp/tools/define.js";
 import { verify } from "../../apps/mcp-service/src/security/hmac.js";
-import { testCtx } from "../helpers.js";
+import { testCtx, unusedDomainSales } from "../helpers.js";
 
 const SECRET = "0123456789abcdef0123456789abcdef";
 
@@ -29,6 +29,7 @@ beforeAll(async () => {
       throw new Error("unused");
     },
     updateServiceDomain: async () => {},
+    ...unusedDomainSales,
     pixCharge: async () => null,
   };
   ctx = { ...t.ctx, addon };

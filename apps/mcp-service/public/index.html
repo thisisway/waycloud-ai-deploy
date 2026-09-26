@@ -184,7 +184,7 @@
             <p class="sub">Como é o seu domínio?</p>
             <div class="choices">
               <button type="button" id="choice-have" class="choice"><b>Já tenho um domínio</b><span>Registrado no Registro.br, GoDaddy ou em outro lugar.</span></button>
-              <button type="button" class="choice" disabled><b>Quero registrar um domínio</b><span>Em breve: registre com a Way Cloud e já sai configurado.</span><em>Em breve</em></button>
+              <button type="button" id="choice-buy" class="choice"><b>Quero registrar um domínio</b><span>Registre com a Way Cloud, pague com Pix e o site já sai configurado, sem mexer em DNS.</span></button>
             </div>
             <button type="button" id="domain-back" class="text-btn muted">Voltar</button>
           </div>
@@ -199,6 +199,59 @@
               <p id="e-dominio" class="err" hidden></p>
             </form>
             <button type="button" id="enter-back" class="text-btn muted">Voltar</button>
+          </div>
+
+          <div id="dp-buy-search" class="pane" hidden>
+            <form id="buy-search-form" novalidate>
+              <label for="f-buy-name">Qual nome você quer?</label>
+              <div class="inline">
+                <input id="f-buy-name" type="text" autocomplete="off" autocapitalize="off" spellcheck="false" maxlength="120" placeholder="minhaloja ou minhaloja.com.br" aria-describedby="e-buy-name">
+                <button id="buy-search-submit" class="btn" type="submit">Buscar</button>
+              </div>
+              <p id="e-buy-name" class="err" hidden></p>
+            </form>
+            <ul id="buy-results" class="offers" aria-live="polite"></ul>
+            <button type="button" id="buy-search-back" class="text-btn muted">Voltar</button>
+          </div>
+
+          <div id="dp-buy-address" class="pane" hidden>
+            <p id="buy-chosen" class="dom"></p>
+            <p class="sub">O registro do domínio exige o seu endereço (regra do Registro.br e da ICANN). Ele vai direto para o cadastro do domínio e não fica guardado neste navegador.</p>
+            <form id="buy-address-form" novalidate>
+              <div class="field"><label for="a-cep">CEP</label><input id="a-cep" type="text" inputmode="numeric" autocomplete="postal-code" maxlength="9" placeholder="00000-000"><p id="e-a-cep" class="err" hidden></p></div>
+              <div class="field"><label for="a-logradouro">Rua ou avenida</label><input id="a-logradouro" type="text" autocomplete="address-line1" maxlength="100"><p id="e-a-logradouro" class="err" hidden></p></div>
+              <div class="pair2">
+                <div class="field"><label for="a-numero">Número</label><input id="a-numero" type="text" autocomplete="off" maxlength="12"><p id="e-a-numero" class="err" hidden></p></div>
+                <div class="field"><label for="a-complemento">Complemento (opcional)</label><input id="a-complemento" type="text" autocomplete="address-line2" maxlength="40"><p id="e-a-complemento" class="err" hidden></p></div>
+              </div>
+              <div class="field"><label for="a-bairro">Bairro</label><input id="a-bairro" type="text" autocomplete="off" maxlength="60"><p id="e-a-bairro" class="err" hidden></p></div>
+              <div class="pair2 city">
+                <div class="field"><label for="a-cidade">Cidade</label><input id="a-cidade" type="text" autocomplete="address-level2" maxlength="60"><p id="e-a-cidade" class="err" hidden></p></div>
+                <div class="field"><label for="a-uf">Estado</label><select id="a-uf" autocomplete="address-level1"><option value="">UF</option><option>AC</option><option>AL</option><option>AP</option><option>AM</option><option>BA</option><option>CE</option><option>DF</option><option>ES</option><option>GO</option><option>MA</option><option>MT</option><option>MS</option><option>MG</option><option>PA</option><option>PB</option><option>PR</option><option>PE</option><option>PI</option><option>RJ</option><option>RN</option><option>RS</option><option>RO</option><option>RR</option><option>SC</option><option>SP</option><option>SE</option><option>TO</option></select><p id="e-a-uf" class="err" hidden></p></div>
+              </div>
+              <p id="e-buy-form" class="err" hidden></p>
+              <button id="buy-submit" type="submit" class="btn wide">Continuar para o pagamento</button>
+            </form>
+            <button type="button" id="buy-address-back" class="text-btn muted">Voltar</button>
+          </div>
+
+          <div id="dp-buy-pay" class="pane" hidden>
+            <p id="buy-domain" class="dom"></p>
+            <p id="buy-status" class="sub" role="status" aria-live="polite"></p>
+            <div id="bpix" class="pix" hidden>
+              <img id="bpix-qr" class="pix-qr" alt="QR Code do Pix" width="180" height="180">
+              <div class="pix-side">
+                <p class="pix-amount">Valor: <strong id="bpix-amount"></strong></p>
+                <p class="note">Abra o app do seu banco, escolha pagar com Pix e leia o QR Code. No celular, copie o código abaixo e use "Pix copia e cola".</p>
+                <div class="pix-code">
+                  <input id="bpix-code" type="text" readonly aria-label="Código Pix copia e cola">
+                  <button id="bpix-copy" type="button" class="btn line" data-pix="bpix">Copiar código</button>
+                </div>
+              </div>
+            </div>
+            <div class="bar-load" aria-hidden="true"><span></span></div>
+            <p><a id="buy-invoice" class="btn line" target="_blank" rel="noopener noreferrer" hidden>Prefere pagar com cartão ou boleto? Abrir a fatura</a></p>
+            <button type="button" id="buy-cancel" class="text-btn muted">Cancelar o pedido do domínio</button>
           </div>
 
           <div id="dp-wait" class="pane" hidden>

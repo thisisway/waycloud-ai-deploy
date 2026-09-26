@@ -65,6 +65,24 @@ export function maskPhone(raw) {
 // Puts a separator after the n-th character, only when more characters follow.
 const withSeparators = (chars, cuts) => [...chars].map((c, i) => (cuts[i + 1] && i + 1 < chars.length ? c + cuts[i + 1] : c)).join("");
 
+/** "01310100" -> "01310-100" while typing. */
+export function maskCep(raw) {
+  const d = digits(raw).slice(0, 8);
+  return d.length > 5 ? `${d.slice(0, 5)}-${d.slice(5)}` : d;
+}
+
+/** Quick address checks for instant feedback; the addon repeats them. Returns { field: message }. */
+export function checkAddress(a) {
+  const e = {};
+  if (digits(a.cep).length !== 8) e.cep = "Informe o CEP com 8 números.";
+  if (a.logradouro.trim().length < 3) e.logradouro = "Informe a rua ou avenida.";
+  if (!a.numero.trim()) e.numero = "Informe o número (ou S/N).";
+  if (a.bairro.trim().length < 2) e.bairro = "Informe o bairro.";
+  if (a.cidade.trim().length < 2) e.cidade = "Informe a cidade.";
+  if (!a.uf) e.uf = "Escolha o estado.";
+  return e;
+}
+
 /** CPF is digits only; the new CNPJ may carry letters. Formats as 000.000.000-00 / 00.000.000/0000-00. */
 export function maskDoc(tipo, raw) {
   if (tipo === "CPF") return withSeparators(digits(raw).slice(0, 11), { 3: ".", 6: ".", 9: "-" });
@@ -105,8 +123,8 @@ export async function signup(api, payload) {
  * The Pix of the order, to show the QR code on this page. Resolves to { copia_cola, qr, valor_centavos } or null when there is
  * none (another payment method, not signed up yet, a hiccup): the page then sends the visitor to the invoice as before.
  */
-export async function getPix(api, sessaoId) {
-  const r = await postJson(api, "/web/pix", { sessao_id: sessaoId });
+export async function getPix(api, sessaoId, path = "/web/pix") {
+  const r = await postJson(api, path, { sessao_id: sessaoId });
   return r.status === 200 && r.body.ok === true && r.body.copia_cola ? r.body : null;
 }
 
