@@ -4,7 +4,7 @@ import { z } from "zod";
 import { CICLOS, erro, ok, sessaoId } from "@waycloud/shared";
 import { AddonError } from "./addon.js";
 import type { ToolContext } from "./mcp/tools/define.js";
-import { cancelDomainRequest, checkOne, dnsInstructions, dnsTarget, latestDomainRequest, requestDomain, systemResolver, TEXTO_ERRO, TEXTO_STATUS, type DomainRow } from "./domains.js";
+import { cancelDomainRequest, checkOne, dnsInstructions, dnsTarget, inspectDomain, latestDomainRequest, normalizeDomain, requestDomain, systemResolver, TEXTO_ERRO, TEXTO_STATUS, type DomainRow } from "./domains.js";
 import { PlansUnavailable } from "./plans.js";
 import { findSession } from "./sessions.js";
 import { rawKey } from "./uploads.js";
@@ -102,13 +102,15 @@ export function registerWeb(app: FastifyInstance, ctx: ToolContext) {
   });
 
   // ---- the customer's own domain (only for a session that has a paid, published site) ----
-  const domainBody = z.object({ sessao_id: sessaoId, dominio: z.string().min(3).max(300) }).strict();
+  const domainBody = z.object({ sessao_id: sessaoId, dominio: z.string().min(3).max(300), metodo: z.enum(["ns", "records"]).default("records") }).strict();
+  const inspectBody = z.object({ sessao_id: sessaoId, dominio: z.string().min(3).max(300) }).strict();
   const sessionOnly = z.object({ sessao_id: sessaoId }).strict();
   const domainLimit = new RateLimit(10 * 60_000);
   const view = async (row: DomainRow) => ({
     ok: true,
     status: row.status,
     dominio: row.domain,
+    metodo: row.method,
     https: row.ssl === true,
     mensagem: TEXTO_STATUS[row.status],
     // The records to create are ours (target name and its IP): never built from what the browser sent.
@@ -122,9 +124,23 @@ export function registerWeb(app: FastifyInstance, ctx: ToolContext) {
     if (domainLimit.tooMany(b.data.sessao_id, 15)) return send(429, erro("LIMITE_EXCEDIDO"));
     const session = await findSession(ctx.db, b.data.sessao_id);
     if (!session) return send(401, erro("SESSAO_INVALIDA"));
-    const r = await requestDomain(ctx, session.id, b.data.dominio);
+    const r = await requestDomain(ctx, session.id, b.data.dominio, b.data.metodo);
     if (!r.ok) return send(r.codigo === "DOMINIO_EM_USO" ? 409 : 422, { ok: false, codigo: r.codigo, mensagem: TEXTO_ERRO[r.codigo] });
     return send(200, await view(r.row));
+  });
+
+  // Read-only look at the domain's DNS, to recommend the safest way to point it (nothing is created).
+  app.post("/web/domain/inspect", { bodyLimit: 4 * 1024 }, async (req, reply) => {
+    const send = (status: number, body: object) => reply.code(status).header("cache-control", "no-store").send(body);
+    const b = inspectBody.safeParse(req.body);
+    if (!b.success) return send(400, erro("ENTRADA_INVALIDA"));
+    if (domainLimit.tooMany(`inspect:${b.data.sessao_id}`, 30)) return send(429, erro("LIMITE_EXCEDIDO"));
+    const session = await findSession(ctx.db, b.data.sessao_id);
+    if (!session) return send(401, erro("SESSAO_INVALIDA"));
+    const domain = normalizeDomain(b.data.dominio);
+    if (!domain) return send(422, { ok: false, codigo: "DOMINIO_INVALIDO", mensagem: TEXTO_ERRO.DOMINIO_INVALIDO });
+    const resolver = ctx.resolver ?? systemResolver;
+    return send(200, { ok: true, dominio: domain, ...(await inspectDomain(resolver, domain, ctx.settings.nameservers)), dns: dnsInstructions(domain, await dnsTarget(resolver, ctx.settings.siteTargetHost), ctx.settings.nameservers) });
   });
 
   app.post("/web/domain/status", { bodyLimit: 2 * 1024 }, async (req, reply) => {

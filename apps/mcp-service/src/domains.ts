@@ -14,6 +14,7 @@ export interface DomainRow {
   subscription_id: string | number;
   domain: string;
   status: DomainStatus;
+  method: Method;
   include_www: boolean;
   ssl: boolean | null;
   error_code: string | null;
@@ -46,8 +47,9 @@ export function isReserved(domain: string, previewTemplate: string): boolean {
 export interface Resolver {
   resolve4(host: string): Promise<string[]>;
   resolveNs(host: string): Promise<string[]>;
+  resolveMx(host: string): Promise<string[]>;
 }
-export const systemResolver: Resolver = { resolve4: (h) => dns.resolve4(h), resolveNs: (h) => dns.resolveNs(h) };
+export const systemResolver: Resolver = { resolve4: (h) => dns.resolve4(h), resolveNs: (h) => dns.resolveNs(h), resolveMx: async (h) => (await dns.resolveMx(h)).map((m) => m.exchange) };
 
 const safeResolve = async (r: Resolver, host: string): Promise<string[]> => {
   try {
@@ -86,6 +88,41 @@ export async function checkDns(r: Resolver, domain: string, targetHost: string, 
   return { ok: false, www: false };
 }
 
+export type Method = "ns" | "records";
+
+export interface DomainInspection {
+  existe: boolean; // has nameservers or an address today
+  tem_email: boolean;
+  provedor: "way" | "cloudflare" | "outro" | null; // who answers for its DNS today
+  recomendado: Method;
+  motivo: string;
+}
+
+const safeMx = async (r: Resolver, host: string): Promise<string[]> => {
+  try {
+    return await r.resolveMx(host);
+  } catch {
+    return [];
+  }
+};
+
+/**
+ * Looks at the domain's DNS as it is today and recommends the safest way to point it to us. Read-only: nothing is created.
+ * Moving the nameservers takes the WHOLE DNS zone (e-mail included) to us, so it is only recommended for domains that look unused.
+ */
+export async function inspectDomain(r: Resolver, domain: string, nameservers: string[]): Promise<DomainInspection> {
+  const [ns, a, mx] = await Promise.all([safeNs(r, domain), safeResolve(r, domain), safeMx(r, domain)]);
+  const mine = nameservers.map((n) => n.toLowerCase());
+  const delegated = ns.length > 0 && ns.every((n) => mine.includes(n));
+  const provedor: DomainInspection["provedor"] = delegated ? "way" : ns.some((n) => n.endsWith(".ns.cloudflare.com")) ? "cloudflare" : ns.length ? "outro" : null;
+  const base = { existe: ns.length > 0 || a.length > 0, tem_email: mx.length > 0, provedor };
+  if (delegated) return { ...base, recomendado: "ns", motivo: "Os nameservers deste domínio já apontam para a Way Cloud." };
+  if (mx.length) return { ...base, recomendado: "records", motivo: "Este domínio já tem e-mail configurado. Trocar os nameservers poderia derrubá-lo; criar 2 registros mantém todo o resto como está." };
+  if (provedor === "cloudflare") return { ...base, recomendado: "records", motivo: "Você usa o Cloudflare: basta criar 2 registros lá, e o resto do seu DNS continua como está." };
+  if (a.length) return { ...base, recomendado: "records", motivo: "Este domínio já tem um site em outro lugar. Criar 2 registros mantém o resto do DNS como está." };
+  return { ...base, recomendado: "ns", motivo: "Este domínio parece novo (sem site nem e-mail). Apontar os nameservers para a Way Cloud deixa tudo automático." };
+}
+
 // ---- requests -----------------------------------------------------------------------------------------
 
 const BACKOFF_SECONDS = [30, 60, 120, 300, 600, 1800, 3600];
@@ -95,7 +132,7 @@ export type RequestResult =
   | { ok: true; row: DomainRow }
   | { ok: false; codigo: "DOMINIO_INVALIDO" | "DOMINIO_RESERVADO" | "DOMINIO_EM_USO" | "SEM_SITE_PUBLICADO" | "SEM_PLANO_ATIVO" };
 
-export async function requestDomain(ctx: ToolContext, sessionId: string, input: string): Promise<RequestResult> {
+export async function requestDomain(ctx: ToolContext, sessionId: string, input: string, method: Method = "records"): Promise<RequestResult> {
   const domain = normalizeDomain(input);
   if (!domain) return { ok: false, codigo: "DOMINIO_INVALIDO" };
   if (isReserved(domain, ctx.settings.previewUrlTemplate)) return { ok: false, codigo: "DOMINIO_RESERVADO" };
@@ -116,7 +153,7 @@ export async function requestDomain(ctx: ToolContext, sessionId: string, input: 
   await ctx.db.tx(async (tx) => {
     // A new request replaces one still waiting; a switch already in progress is left alone.
     await tx.query("UPDATE domain_changes SET status = 'cancelled', updated_at = now() WHERE subscription_id = $1 AND status = 'waiting_dns'", [sub.whmcs_service_id]);
-    [row] = await tx.query<DomainRow>("INSERT INTO domain_changes (subscription_id, domain) VALUES ($1, $2) ON CONFLICT DO NOTHING RETURNING *", [sub.whmcs_service_id, domain]);
+    [row] = await tx.query<DomainRow>("INSERT INTO domain_changes (subscription_id, domain, method) VALUES ($1, $2, $3) ON CONFLICT DO NOTHING RETURNING *", [sub.whmcs_service_id, domain, method]);
   });
   if (!row) return { ok: false, codigo: "DOMINIO_EM_USO" }; // an open switch, or the same domain raced us
   await checkOne(ctx, row.id, ctx.resolver ?? systemResolver); // the DNS may already be right
@@ -165,7 +202,7 @@ export async function cancelDomainRequest(db: Db, sessionId: string): Promise<bo
 // ---- what the customer sees ---------------------------------------------------------------------------------
 
 export const TEXTO_STATUS: Record<DomainStatus, string> = {
-  waiting_dns: "Aguardando o DNS do seu domínio: use os nameservers da Way Cloud OU os registros abaixo (escolha um). Pode levar de alguns minutos a algumas horas para propagar, e você não precisa ficar nesta página: assim que responder, a gente continua sozinho.",
+  waiting_dns: "Aguardando o DNS do seu domínio. Pode levar de alguns minutos a algumas horas para propagar, e você não precisa ficar nesta página: assim que responder, a gente continua sozinho.",
   ready: "O DNS já está certo. Estamos configurando o seu domínio no servidor.",
   switching: "Configurando o seu domínio no servidor e ativando o HTTPS.",
   active: "Pronto! O seu domínio é o endereço principal do site.",

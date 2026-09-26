@@ -34,8 +34,8 @@
 
       <main class="flow">
         <div class="prog" role="group" aria-label="Progresso">
-          <p id="prog-label">Etapa 1 de 4 · Enviar</p>
-          <div class="segs" aria-hidden="true"><i class="on"></i><i></i><i></i><i></i></div>
+          <p id="prog-label">Etapa 1 de 5 · Enviar</p>
+          <div class="segs" aria-hidden="true"><i class="on"></i><i></i><i></i><i></i><i></i></div>
         </div>
 
         <div id="alert" class="alert" role="alert" aria-live="assertive" hidden>
@@ -150,22 +150,64 @@
           <p id="deploy-done" hidden><a id="site-link" class="btn" target="_blank" rel="noopener noreferrer"></a></p>
           <p id="deploy-note" class="note soft"></p>
 
-          <div id="domain-box" class="domain" hidden>
-            <h3>Usar o seu próprio domínio</h3>
-            <p class="note">Quando o domínio estiver conectado, o endereço provisório deixa de funcionar e o seu domínio passa a ser o principal.</p>
+          <div id="next-domain" class="next" hidden>
+            <div class="next-full">
+              <h3>Próximo passo: coloque o seu domínio</h3>
+              <p class="note">Use um domínio seu no lugar do endereço provisório.</p>
+              <div class="actions">
+                <button type="button" id="domain-start" class="btn">Conectar meu domínio</button>
+                <button type="button" id="domain-later" class="text-btn muted">Fazer depois</button>
+              </div>
+            </div>
+            <button type="button" id="domain-resume" class="text-btn next-compact" hidden>Conectar o meu domínio</button>
+          </div>
+        </section>
+
+        <section id="s-domain" class="block" hidden>
+          <div class="row">
+            <h2>Seu domínio</h2>
+            <a id="domain-site" class="link-out" target="_blank" rel="noopener noreferrer"><span>Ver o site</span><svg class="ic"><use href="#i-external"/></svg></a>
+          </div>
+
+          <div id="dp-choose" class="pane">
+            <p class="sub">Como é o seu domínio?</p>
+            <div class="choices">
+              <button type="button" id="choice-have" class="choice"><b>Já tenho um domínio</b><span>Registrado no Registro.br, GoDaddy ou em outro lugar.</span></button>
+              <button type="button" class="choice" disabled><b>Quero registrar um domínio</b><span>Em breve: registre com a Way Cloud e já sai configurado.</span><em>Em breve</em></button>
+            </div>
+            <button type="button" id="domain-back" class="text-btn muted">Voltar</button>
+          </div>
+
+          <div id="dp-enter" class="pane" hidden>
             <form id="domain-form" novalidate>
-              <label for="f-dominio">Seu domínio</label>
+              <label for="f-dominio">Digite o seu domínio</label>
               <div class="inline">
                 <input id="f-dominio" type="text" inputmode="url" autocomplete="off" autocapitalize="off" spellcheck="false" maxlength="253" placeholder="meusite.com.br" aria-describedby="e-dominio">
-                <button id="domain-submit" class="btn" type="submit">Conectar</button>
+                <button id="domain-submit" class="btn" type="submit">Continuar</button>
               </div>
               <p id="e-dominio" class="err" hidden></p>
             </form>
-            <div id="domain-dns" hidden>
-              <p id="domain-status" class="note" role="status" aria-live="polite"></p>
-              <div id="dns-records" class="dns-wrap" hidden></div>
-              <button type="button" id="domain-cancel" class="text-btn muted" hidden>Cancelar</button>
-            </div>
+            <button type="button" id="enter-back" class="text-btn muted">Voltar</button>
+          </div>
+
+          <div id="dp-wait" class="pane" hidden>
+            <p id="dp-domain" class="dom"></p>
+            <p id="dp-reco" class="reco" hidden></p>
+            <div id="dp-instr" class="instr"></div>
+            <button type="button" id="dp-switch" class="text-btn"></button>
+            <ol id="dp-stages" class="timeline" aria-label="Andamento do domínio">
+              <li data-stage="0">Aguardando o DNS</li>
+              <li data-stage="1">Configurando o domínio</li>
+              <li data-stage="2">Ativando o HTTPS</li>
+            </ol>
+            <p id="dp-status" class="note" role="status" aria-live="polite"></p>
+            <button type="button" id="domain-cancel" class="text-btn muted" hidden>Cancelar</button>
+          </div>
+
+          <div id="dp-done" class="pane" hidden>
+            <h3>Domínio conectado!</h3>
+            <p id="dp-done-msg" class="note"></p>
+            <p><a id="dp-link" class="btn big" target="_blank" rel="noopener noreferrer"></a></p>
           </div>
         </section>
 

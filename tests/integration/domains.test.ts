@@ -3,7 +3,7 @@ import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
 import type { AddonClient } from "../../apps/mcp-service/src/addon.js";
 import { syncAgentTokens } from "../../apps/mcp-service/src/agent.js";
 import type { Db } from "../../apps/mcp-service/src/db/index.js";
-import { checkDns, checkDueDomains, isReserved, normalizeDomain, type Resolver } from "../../apps/mcp-service/src/domains.js";
+import { checkDns, checkDueDomains, inspectDomain, isReserved, normalizeDomain, type Resolver } from "../../apps/mcp-service/src/domains.js";
 import { TOOLS } from "../../apps/mcp-service/src/mcp/tools/index.js";
 import type { ToolContext } from "../../apps/mcp-service/src/mcp/tools/define.js";
 import { buildApp } from "../../apps/mcp-service/src/server.js";
@@ -18,10 +18,12 @@ const OURS = ["177.11.55.71"];
 /** DNS as a table: host -> A records. Anything else does not resolve. */
 const dnsMap = new Map<string, string[]>([[TARGET, OURS]]);
 const nsMap = new Map<string, string[]>();
+const mxMap = new Map<string, string[]>();
 const NS = ["ns1.waycloud.com.br", "ns2.waycloud.com.br"];
 const resolver: Resolver = {
   resolve4: async (h) => { const v = dnsMap.get(h); if (!v) throw Object.assign(new Error("ENOTFOUND"), { code: "ENOTFOUND" }); return v; },
   resolveNs: async (h) => { const v = nsMap.get(h); if (!v) throw Object.assign(new Error("ENODATA"), { code: "ENODATA" }); return v; },
+  resolveMx: async (h) => { const v = mxMap.get(h); if (!v) throw Object.assign(new Error("ENODATA"), { code: "ENODATA" }); return v; },
 };
 const pointToUs = (d: string, www = false) => (dnsMap.set(d, OURS), www && dnsMap.set(`www.${d}`, OURS));
 
@@ -101,7 +103,7 @@ describe("DNS check", () => {
 
   it("never approves anything while our own target does not resolve", async () => {
     dnsMap.set("orphan.test", OURS);
-    expect(await checkDns({ resolve4: async (h) => (h === TARGET ? Promise.reject(new Error("down")) : OURS), resolveNs: async () => Promise.reject(new Error("x")) }, "orphan.test", TARGET, NS)).toEqual({ ok: false, www: false });
+    expect(await checkDns({ resolve4: async (h) => (h === TARGET ? Promise.reject(new Error("down")) : OURS), resolveNs: async () => Promise.reject(new Error("x")), resolveMx: async () => [] }, "orphan.test", TARGET, NS)).toEqual({ ok: false, www: false });
   });
 
   it("nameservers: approved when they are ours (case and trailing dot ignored), and only ours", async () => {
@@ -116,8 +118,35 @@ describe("DNS check", () => {
   });
 
   it("nameserver delegation works even while our A target does not resolve", async () => {
-    const noTarget: Resolver = { resolve4: async () => Promise.reject(new Error("down")), resolveNs: async (h) => (h === "delegado.test" ? NS : Promise.reject(new Error("x"))) };
+    const noTarget: Resolver = { resolve4: async () => Promise.reject(new Error("down")), resolveNs: async (h) => (h === "delegado.test" ? NS : Promise.reject(new Error("x"))), resolveMx: async () => [] };
     expect(await checkDns(noTarget, "delegado.test", TARGET, NS)).toMatchObject({ ok: true, via: "ns" });
+  });
+});
+
+describe("what the page recommends for a domain (read-only look at its DNS)", () => {
+  const look = (d: string) => inspectDomain(resolver, d, NS);
+  it("a domain that looks unused: nameservers; with e-mail, a site elsewhere or Cloudflare: records; already ours: nameservers", async () => {
+    nsMap.set("novo.test", []); // registered but nothing there
+    expect(await look("naoexiste.test")).toMatchObject({ existe: false, tem_email: false, provedor: null, recomendado: "ns" });
+    nsMap.set("comemail.test", ["ns1.registro.br"]); mxMap.set("comemail.test", ["mx.google.com"]);
+    expect(await look("comemail.test")).toMatchObject({ tem_email: true, provedor: "outro", recomendado: "records" });
+    expect((await look("comemail.test")).motivo).toMatch(/e-mail/);
+    nsMap.set("cf.test", ["ana.ns.cloudflare.com", "bob.ns.cloudflare.com"]);
+    expect(await look("cf.test")).toMatchObject({ provedor: "cloudflare", recomendado: "records" });
+    expect((await look("cf.test")).motivo).toMatch(/Cloudflare/);
+    nsMap.set("comsite.test", ["ns1.godaddy.com"]); dnsMap.set("comsite.test", ["203.0.113.50"]);
+    expect(await look("comsite.test")).toMatchObject({ existe: true, provedor: "outro", recomendado: "records" });
+    nsMap.set("jaaqui.test", NS);
+    expect(await look("jaaqui.test")).toMatchObject({ provedor: "way", recomendado: "ns" });
+    nsMap.set("novinho.test", ["ns1.registro.br"]); // delegated somewhere, but no site and no e-mail yet
+    expect(await look("novinho.test")).toMatchObject({ existe: true, provedor: "outro", recomendado: "ns" });
+  });
+
+  it("e-mail wins over everything: never recommend moving the nameservers of a domain with e-mail", async () => {
+    nsMap.set("cfmail.test", ["ana.ns.cloudflare.com"]); mxMap.set("cfmail.test", ["mail.example.com"]);
+    expect((await look("cfmail.test")).recomendado).toBe("records");
+    nsMap.set("mailnovo.test", []); mxMap.set("mailnovo.test", ["mail.example.com"]);
+    expect((await look("mailnovo.test")).recomendado).toBe("records");
   });
 });
 
@@ -178,6 +207,24 @@ describe("customer flow: request, DNS, agent switch, WHMCS", () => {
     expect(((await web("/status", s.token)).json() as { status: string }).status).toBe("ready");
     const job = (await agent("/domain-jobs/next")).json() as { domain: string; dns_mode: string; include_www: boolean };
     expect(job).toMatchObject({ domain: "novo-ns.test", dns_mode: "ns", include_www: true });
+  });
+
+  it("the chosen method is kept and returned, and inspect creates nothing", async () => {
+    const s = await liveSite();
+    nsMap.set("escolha.test", []);
+    const seen = (await web("/inspect", s.token, { dominio: "https://www.Escolha.test/" })).json() as { ok: boolean; dominio: string; recomendado: string; dns: { nameservers: string[]; registros: unknown[] } };
+    expect([seen.ok, seen.dominio, seen.recomendado]).toEqual([true, "escolha.test", "ns"]);
+    expect(seen.dns.nameservers).toEqual(NS);
+    expect(await statusOf(s.uuid)).toBeUndefined(); // nothing was created by looking
+
+    const asked = (await web("", s.token, { dominio: "escolha.test", metodo: "ns" })).json() as { metodo: string; status: string };
+    expect([asked.metodo, asked.status]).toEqual(["ns", "waiting_dns"]);
+    expect(((await web("/status", s.token)).json() as { metodo: string }).metodo).toBe("ns"); // survives a reload of the page
+    const again = (await web("", s.token, { dominio: "escolha.test", metodo: "records" })).json() as { metodo: string };
+    expect(again.metodo).toBe("records"); // "I prefer the other way" replaces the waiting request
+    expect((await web("", s.token, { dominio: "escolha.test", metodo: "outro" })).statusCode).toBe(400);
+    expect((await web("/inspect", s.token, { dominio: "meusite" })).statusCode).toBe(422);
+    expect((await web("/inspect", "z".repeat(43), { dominio: "escolha.test" })).statusCode).toBe(401);
   });
 
   it("failed switch changes nothing: the site keeps its domain", async () => {

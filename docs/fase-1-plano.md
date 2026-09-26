@@ -330,3 +330,7 @@ Depois de publicado, o cliente pode conectar o domínio dele; o domínio provis�
 6. **Página**: acompanha "aguardando o DNS", "configurando", "ativando o HTTPS" e "pronto", e troca o endereço mostrado para o novo.
 
 Ainda não coberto: venda de domínio (registrar um novo pelo WHMCS), mais de um domínio por site e o retorno ao provisório.
+
+## 20. O passo "Domínio" na página
+
+A página passou a ter **5 etapas** (Enviar, Prévia, Contratar, No ar, **Domínio**). A tela "No ar" ficou curta (resultado + "Próximo passo: coloque o seu domínio", com "Fazer depois"); o domínio é um passo próprio, uma pergunta por vez: *Já tenho um domínio* (ou *Quero registrar*, "em breve") -> digitar o domínio -> a página olha o DNS dele (`POST /web/domain/inspect`, somente leitura) e **recomenda** o método mais seguro: **registros A/CNAME** se o domínio tem e-mail (MX), usa Cloudflare ou já tem site em outro lugar (trocar os nameservers levaria o DNS inteiro, inclusive o e-mail); **nameservers da Way Cloud** se o domínio parece novo ou já aponta para eles. Só as instruções do método escolhido aparecem, em passos numerados, com "Prefiro o outro jeito". O acompanhamento tem 3 estágios (aguardando o DNS, configurando, ativando o HTTPS). O método escolhido fica guardado no pedido (`domain_changes.method`) e a página retoma de onde parou ao recarregar.

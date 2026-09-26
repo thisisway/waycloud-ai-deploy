@@ -98,7 +98,7 @@ describe.skipIf(!enabled)("deploy agent (bash, root) against the real service", 
   };
   const statusOf = async (s: { token: string }, id: string) => (await call("status_deploy", { sessao_id: s.token, deploy_id: id })).dados as { status: string; url: string | null; https_ativo: boolean | null };
   const makeDue = (file: string) => dx(`f=/var/lib/waycloud-agent/ssl-pending/${file}; awk '{$4=0; print}' $f > $f.new && mv $f.new $f`); // next attempt: now
-  const dnsOk = { resolve4: async () => ["203.0.113.5"], resolveNs: async () => Promise.reject(new Error("no ns")) }; // every name (target, domain, www) points to "us"
+  const dnsOk = { resolve4: async () => ["203.0.113.5"], resolveNs: async () => Promise.reject(new Error("no ns")), resolveMx: async () => [] }; // every name (target, domain, www) points to "us"
   const doc = (d: string) => `${V}/${d}/httpdocs`;
   const snaps = (d: string) => dx(`ls ${V}/.waycloud-agent/${d}/snapshots 2>/dev/null | wc -l`);
 
@@ -221,7 +221,7 @@ describe.skipIf(!enabled)("deploy agent (bash, root) against the real service", 
     }, 240_000);
 
     it("nameserver mode: the switch runs before any A record exists, and the agent checks that Plesk has the DNS zone", async () => {
-      ctx.resolver = { resolve4: async () => Promise.reject(new Error("no A yet")), resolveNs: async (h) => (h === "cliente-ns.test" ? ctx.settings.nameservers : Promise.reject(new Error("no ns"))) };
+      ctx.resolver = { resolve4: async () => Promise.reject(new Error("no A yet")), resolveNs: async (h) => (h === "cliente-ns.test" ? ctx.settings.nameservers : Promise.reject(new Error("no ns"))), resolveMx: async () => [] };
       const s = await site("OLD");
       await publish(s, { "index.html": "LIVE-NS" });
       expect((await agent()).code).toBe(0);

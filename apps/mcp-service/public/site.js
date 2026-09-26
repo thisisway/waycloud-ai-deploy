@@ -27,8 +27,8 @@ const save = (patch) => {
 };
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 const MAX_BYTES = 100 * 1024 * 1024; // keep in sync with MAX_WEB_ZIP_BYTES in web.ts
-const SECTIONS = ["s-upload", "s-preview", "s-plans", "s-signup", "s-wait", "s-deploy"];
-const STEP_NAMES = ["Enviar", "Prévia", "Contratar", "No ar"];
+const SECTIONS = ["s-upload", "s-preview", "s-plans", "s-signup", "s-wait", "s-deploy", "s-domain"];
+const STEP_NAMES = ["Enviar", "Prévia", "Contratar", "No ar", "Domínio"];
 const STAGE_OF = { na_fila: 0, enviando: 1, validando: 2, publicado: 3 };
 let cycle = "mensal";
 let run = 0; // bumped to stop a polling loop that is no longer wanted
@@ -51,7 +51,7 @@ const text = (tag, content, cls) => {
 
 function view(step, ...ids) {
   for (const id of SECTIONS) $(id).hidden = !ids.includes(id);
-  $("prog-label").textContent = step > 4 ? "Publicado" : `Etapa ${step} de 4 · ${STEP_NAMES[step - 1]}`;
+  $("prog-label").textContent = step > 5 ? "Tudo pronto" : `Etapa ${step} de 5 · ${STEP_NAMES[step - 1]}`;
   document.querySelectorAll(".segs i").forEach((bar, i) => bar.classList.toggle("on", i < step));
   $("restart").hidden = !state.sessao_id;
 }
@@ -256,6 +256,9 @@ async function publish() {
   clearAlert();
   view(4, "s-deploy");
   $("deploy-done").hidden = true;
+  $("timeline").hidden = false;
+  $("next-domain").hidden = true;
+  $("deploy-title").textContent = "Publicando o seu site";
   setStage(0);
   $("deploy-msg").textContent = "Publicando o seu site...";
   try {
@@ -313,8 +316,8 @@ async function waitHttps() {
 }
 
 function showDone(note) {
-  view(5, "s-deploy");
-  setStage(3);
+  view(4, "s-deploy");
+  $("timeline").hidden = true; // the checklist is for while it is publishing; afterwards only the result matters
   $("deploy-title").textContent = "Seu site está no ar!";
   $("site-link").className = "btn big";
   $("deploy-msg").textContent = "";
@@ -323,14 +326,30 @@ function showDone(note) {
   link.replaceChildren(document.createTextNode(`Abrir ${state.site_url.replace(/^https?:\/\//, "")}`), icon("external"));
   $("deploy-done").hidden = false;
   $("deploy-note").textContent = state.https === false ? HTTPS_PENDING_NOTE : (note ?? "");
-  if ($("domain-box").hidden) {
-    $("domain-box").hidden = false;
-    void domainStatus(true); // an earlier request (or one in progress) is shown right away
-  }
+  showNextDomain();
+  void domainStatus(true); // an earlier request (or one in progress) opens the domain step right away
 }
 
-// ---- 4. the customer's own domain --------------------------------------------------------------------------------
+// ---- 5. the domain step --------------------------------------------------------------------------------------------
 let domainRun = 0;
+let inspection = null; // what the DNS looked like when the customer typed the domain (drives the recommendation)
+const PANES = ["dp-choose", "dp-enter", "dp-wait", "dp-done"];
+const pane = (id) => PANES.forEach((p) => ($(p).hidden = p !== id));
+
+function showNextDomain() {
+  const later = state.domain_later === true;
+  $("next-domain").hidden = false;
+  $("next-domain").classList.toggle("compact", later);
+  $("domain-resume").hidden = !later;
+}
+
+function openDomainStep(start = "dp-choose") {
+  clearAlert();
+  view(5, "s-domain");
+  $("domain-site").href = state.site_url ?? "#";
+  pane(start);
+  if (start === "dp-enter") $("f-dominio").focus();
+}
 
 function copyButton(value) {
   const copy = text("button", "Copiar", "text-btn");
@@ -357,65 +376,93 @@ function dnsRow(tipo, nome, valor, extra) {
   return row;
 }
 
-function dnsOption(title, intro, rows, warning) {
-  const box = document.createElement("section");
-  box.className = "opt";
-  const list = document.createElement("div");
-  list.className = "dns";
-  list.append(...rows);
-  box.append(text("h4", title), text("p", intro, "note"), ...(warning ? [text("p", warning, "note warn")] : []), list);
+const step = (t) => text("li", t);
+const rowsBox = (rows) => {
+  const box = document.createElement("div");
+  box.className = "dns";
+  box.append(...rows);
   return box;
+};
+
+/** Only the chosen way is shown, as numbered steps. */
+function renderInstructions(d) {
+  const box = $("dp-instr");
+  if (d.metodo === "ns") {
+    const list = document.createElement("ol");
+    list.append(step("Entre no painel de onde o domínio está registrado (Registro.br, GoDaddy, Hostinger...)."), step("Procure a opção de servidores DNS (nameservers)."));
+    const third = step("Troque os nameservers atuais por estes dois:");
+    third.append(rowsBox(d.dns.nameservers.map((ns, i) => dnsRow(`NS ${i + 1}`, null, ns))));
+    list.append(third, step("Salve. A propagação pode levar de alguns minutos a algumas horas."));
+    box.replaceChildren(text("h4", "Aponte os nameservers para a Way Cloud"), list, text("p", "Atenção: isso leva o DNS inteiro do domínio para a Way Cloud, inclusive o e-mail.", "warn"));
+  } else {
+    const [a, cname] = d.dns.registros;
+    const list = document.createElement("ol");
+    list.append(step("Entre no painel do seu DNS (Cloudflare, Registro.br, GoDaddy...)."));
+    const second = step("Crie estes dois registros:");
+    second.append(rowsBox([dnsRow(a.tipo, a.nome, a.valor, a.alternativa), dnsRow(cname.tipo, cname.nome, cname.valor)]));
+    list.append(second, step("No Cloudflare, deixe a nuvem cinza (só DNS), senão o certificado não sai."), step("Salve. A propagação pode levar de alguns minutos a algumas horas."));
+    box.replaceChildren(text("h4", "Crie os registros no seu DNS"), list);
+  }
+  $("dp-switch").textContent = d.metodo === "ns" ? "Prefiro criar registros no meu DNS" : "Prefiro apontar os nameservers para a Way Cloud";
+  $("dp-switch").dataset.to = d.metodo === "ns" ? "records" : "ns";
 }
 
-/** The two ways to point the domain: our nameservers (everything automatic) or A/CNAME records in the customer's own DNS. */
-function renderDns(dns) {
-  const [a, cname] = dns.registros;
-  $("dns-records").replaceChildren(
-    dnsOption(
-      "Opção 1: nameservers da Way Cloud (o mais simples)",
-      "No lugar onde você registrou o domínio (Registro.br, GoDaddy...), troque os nameservers por estes. A gente configura todo o DNS do site para você.",
-      dns.nameservers.map((ns, i) => dnsRow(`NS ${i + 1}`, null, ns)),
-      "Atenção: isso leva o DNS inteiro do domínio para a Way Cloud, inclusive o e-mail. Use se o domínio é novo ou não tem e-mail configurado.",
-    ),
-    dnsOption(
-      "Opção 2: registros no seu DNS (Cloudflare e outros)",
-      "Se o seu domínio já tem e-mail ou outros serviços, mantenha o DNS onde está e crie estes dois registros. No Cloudflare, deixe a nuvem cinza (só DNS).",
-      [dnsRow(a.tipo, a.nome, a.valor, a.alternativa), dnsRow(cname.tipo, cname.nome, cname.valor)],
-    ),
-  );
-  $("dns-records").hidden = false;
+function setDomainStage(n) {
+  document.querySelectorAll("#dp-stages li").forEach((li) => {
+    const i = Number(li.dataset.stage);
+    li.classList.toggle("done", i < n || n === 3);
+    li.classList.toggle("cur", i === n && n < 3);
+  });
 }
 
-/** Shows what the service says about the domain request, and keeps looking while something is still moving. */
+/** Renders what the service says about the request. Returns true when nothing is left to wait for. */
+function applyDomain(d) {
+  if (d.status === "cancelled" || d.status === "none") return true;
+  openDomainStep("dp-wait");
+  $("dp-domain").textContent = d.dominio;
+  $("dp-status").textContent = d.mensagem ?? "";
+  $("domain-cancel").hidden = d.status !== "waiting_dns";
+  const waiting = d.status === "waiting_dns" && d.dns;
+  $("dp-instr").hidden = !waiting;
+  $("dp-switch").hidden = !waiting;
+  $("dp-reco").hidden = !(waiting && inspection && inspection.recomendado === d.metodo);
+  if (!$("dp-reco").hidden) $("dp-reco").textContent = `Recomendado para o seu domínio: ${inspection.motivo}`;
+  if (waiting) renderInstructions(d);
+  setDomainStage({ waiting_dns: 0, ready: 1, switching: 1, active: d.https ? 3 : 2 }[d.status] ?? 0);
+  if (d.status === "active") {
+    save({ site_url: `${d.https ? "https" : "http"}://${d.dominio}`, https: d.https });
+    if (d.https) {
+      pane("dp-done");
+      view(6, "s-domain");
+      $("dp-done-msg").textContent = "O seu domínio agora é o endereço principal do site. O endereço provisório deixou de funcionar.";
+      $("dp-link").href = state.site_url;
+      $("dp-link").replaceChildren(document.createTextNode(`Abrir ${d.dominio}`), icon("external"));
+      $("site-link").href = state.site_url;
+      return true;
+    }
+    $("dp-status").textContent = `${d.mensagem} Estamos ativando o HTTPS: em alguns minutos o endereço abre com cadeado.`;
+  }
+  return ["failed", "expired"].includes(d.status);
+}
+
+/** Looks at the service until the domain is done (or there is nothing to follow). `first`: only open the step if a request exists. */
 async function domainStatus(first = false) {
   const me = ++domainRun;
   for (let i = 0; i < 240 && me === domainRun; i++) {
     const { status, body } = await postJson(api, "/web/domain/status", { sessao_id: state.sessao_id });
     if (status === 200 && body.status && body.status !== "none") {
-      applyDomain(body);
-      if (["active", "failed", "expired", "cancelled"].includes(body.status) && (body.status !== "active" || body.https)) return;
+      if (applyDomain(body)) return;
     } else if (first || body.status === "none") {
-      return; // no request yet: only the form
+      return; // no request: the site screen with its next step stays
     }
     await sleep(body.status === "waiting_dns" ? 15_000 : 5_000);
   }
 }
 
-function applyDomain(d) {
-  const open = d.status === "waiting_dns" || d.status === "ready" || d.status === "switching" || d.status === "active";
-  $("domain-form").hidden = open;
-  $("domain-dns").hidden = !open && !d.mensagem;
-  $("domain-status").textContent = d.status === "active" && !d.https ? `${d.mensagem} Estamos ativando o HTTPS: em alguns minutos o endereço abre com cadeado.` : d.mensagem;
-  $("domain-cancel").hidden = d.status !== "waiting_dns";
-  if (d.status === "waiting_dns" && d.dns) renderDns(d.dns);
-  else $("dns-records").hidden = true;
-  if (d.status === "active") {
-    save({ site_url: `${d.https ? "https" : "http"}://${d.dominio}`, https: d.https });
-    showDone(state.https ? "" : undefined);
-    $("domain-box").hidden = false;
-    $("domain-form").hidden = true;
-    $("domain-dns").hidden = false;
-  }
+async function requestDomain(dominio, metodo) {
+  const { status, body } = await postJson(api, "/web/domain", { sessao_id: state.sessao_id, dominio, metodo });
+  if (status === 200 && body.ok) return body;
+  throw new Error(body.mensagem ?? body.mensagem_para_usuario ?? (status === 429 ? "Muitas tentativas. Aguarde alguns minutos." : "Não consegui conectar o domínio agora. Tente de novo em instantes."));
 }
 
 async function submitDomain(event) {
@@ -423,18 +470,36 @@ async function submitDomain(event) {
   clearAlert();
   const err = $("e-dominio");
   err.hidden = true;
+  $("f-dominio").removeAttribute("aria-invalid");
   const button = $("domain-submit");
   button.disabled = true;
-  const { status, body } = await postJson(api, "/web/domain", { sessao_id: state.sessao_id, dominio: $("f-dominio").value });
-  button.disabled = false;
-  if (status === 200 && body.ok) {
-    applyDomain(body);
+  button.textContent = "Conferindo...";
+  try {
+    const seen = await postJson(api, "/web/domain/inspect", { sessao_id: state.sessao_id, dominio: $("f-dominio").value });
+    if (seen.status !== 200 || !seen.body.ok) throw new Error(seen.body.mensagem ?? seen.body.mensagem_para_usuario ?? "Não consegui olhar esse domínio agora. Tente de novo.");
+    inspection = seen.body;
+    const asked = await requestDomain(seen.body.dominio, seen.body.recomendado);
+    applyDomain(asked);
     void domainStatus();
-    return;
+  } catch (e) {
+    err.textContent = e instanceof Error ? e.message : "Algo deu errado. Tente de novo.";
+    err.hidden = false;
+    $("f-dominio").setAttribute("aria-invalid", "true");
+  } finally {
+    button.disabled = false;
+    button.textContent = "Continuar";
   }
-  err.textContent = body.mensagem ?? body.mensagem_para_usuario ?? (status === 429 ? "Muitas tentativas. Aguarde alguns minutos." : "Não consegui conectar o domínio agora. Tente de novo em instantes.");
-  err.hidden = false;
-  $("f-dominio").setAttribute("aria-invalid", "true");
+}
+
+async function switchMethod() {
+  const to = $("dp-switch").dataset.to;
+  const dominio = $("dp-domain").textContent;
+  try {
+    inspection = inspection ? { ...inspection, recomendado: inspection.recomendado } : null;
+    applyDomain(await requestDomain(dominio, to));
+  } catch (e) {
+    showAlert(e instanceof Error ? e.message : "Não consegui trocar agora.");
+  }
 }
 
 // ---- wiring -------------------------------------------------------------------------------
@@ -479,11 +544,19 @@ startRibbons($("ribbons"));
 
 $("signup").addEventListener("submit", submitSignup);
 $("domain-form").addEventListener("submit", submitDomain);
+$("domain-start").addEventListener("click", () => openDomainStep());
+$("domain-resume").addEventListener("click", () => openDomainStep());
+$("domain-later").addEventListener("click", () => (save({ domain_later: true }), showNextDomain()));
+$("choice-have").addEventListener("click", () => openDomainStep("dp-enter"));
+$("domain-back").addEventListener("click", () => (view(4, "s-deploy"), showNextDomain()));
+$("enter-back").addEventListener("click", () => pane("dp-choose"));
+$("dp-switch").addEventListener("click", switchMethod);
 $("domain-cancel").addEventListener("click", async () => {
-  await postJson(api, "/web/domain/cancel", { sessao_id: state.sessao_id });
   domainRun++;
-  $("domain-form").hidden = false;
-  $("domain-dns").hidden = true;
+  await postJson(api, "/web/domain/cancel", { sessao_id: state.sessao_id });
+  inspection = null;
+  pane("dp-enter");
+  $("f-dominio").focus();
 });
 $("change-plan").addEventListener("click", () => (clearAlert(), view(3, "s-preview", "s-plans")));
 $("f-tel").addEventListener("input", (e) => (e.target.value = maskPhone(e.target.value)));
