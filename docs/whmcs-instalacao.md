@@ -48,3 +48,12 @@ Os detalhes abaixo seguem a documentação do WHMCS, mas não puderam ser exerci
 ## 4. Desfazer
 
 Em **Módulos de Addon**, clique em **Desativar**: os dados ficam guardados e nada de cobrança muda. Para remover de vez, apague a pasta `modules/addons/waycloud_ai/`. As tabelas `mod_waycloud_*` podem ser apagadas depois, se quiser.
+
+## Desempenho do checkout (addon 0.5.1)
+
+O cadastro pela página deixou de esperar e-mails e notificações no caminho do cliente:
+
+- `AddClient` com `noemail` (o e-mail de definição de senha faz o papel de boas-vindas) e `AddOrder` com `noemail` e `noinvoiceemail` (o cliente já está na tela da fatura).
+- O e-mail de definição de senha é enviado depois que a resposta sai (`fastcgi_finish_request`).
+- Addon de terceiros `lknhooknotification`: a chamada da API de WhatsApp roda depois da resposta em requisições web e tem timeout (5 s de conexão, 20 s total). Ver `WAYCLOUD_PATCH.txt` na pasta do addon; reaplicar após atualizar o addon (originais em `*.orig-AAAAMMDD`).
+- Hook `mercadopago_hooks.php` desativado (`.php_old`): o gateway não está ativo e o hook gerava um aviso de arquivo inexistente a cada execução do cron.

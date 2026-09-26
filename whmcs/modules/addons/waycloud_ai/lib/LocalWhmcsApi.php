@@ -73,6 +73,9 @@ final class LocalWhmcsApi implements WhmcsApi
             'pid' => [$pid],
             'billingcycle' => [$cycle],
             'domain' => [$domain],
+            // The customer goes straight to the invoice page: the order and "invoice available" e-mails only slow the request (about 15 s of SMTP and Pix generation).
+            'noemail' => true,
+            'noinvoiceemail' => true,
         ]);
         $serviceIds = array_filter(explode(',', (string) ($r['serviceids'] ?? '')));
         return [
@@ -89,7 +92,17 @@ final class LocalWhmcsApi implements WhmcsApi
 
     public function sendPasswordReset(string $email): void
     {
-        $this->call('ResetPassword', ['email' => $email]); // verify: WHMCS 8 API (ResetPassword sends the reset-validation e-mail)
+        // The customer is already waiting for the invoice page: send once the response is out (SMTP takes seconds).
+        register_shutdown_function(function () use ($email): void {
+            if (function_exists('fastcgi_finish_request')) {
+                fastcgi_finish_request();
+            }
+            try {
+                $this->call('ResetPassword', ['email' => $email]); // verify: WHMCS 8 API (ResetPassword sends the reset-validation e-mail)
+            } catch (\Throwable $e) {
+                logActivity('Way Cloud AI: e-mail de definição de senha não enviado - ' . $e->getMessage());
+            }
+        });
     }
 
     public function createSsoUrl(int $clientId, string $path): ?string

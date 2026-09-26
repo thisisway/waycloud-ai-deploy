@@ -492,6 +492,7 @@ test('creates client (random password) + order, asks WHMCS to e-mail the set-pas
     eq([true, 'https://app.test/sso/abc', null], [$r['ok'], $r['redirect'], $r['fallback_url']]);
     [, $client] = $e['whmcs']->calls[0];
     yes((bool) preg_match('/^[0-9a-f]{48}$/', $client['password2']), 'a random password, never one typed by the customer');
+    eq(true, $client['noemail'], 'no stock sign-up e-mail: the set-password e-mail is the welcome');
     eq(['reset', ['maria@example.com']], $e['whmcs']->calls[1], 'set-password e-mail requested right after the account exists');
     eq(['addOrder', 'sso'], [$e['whmcs']->calls[2][0], $e['whmcs']->calls[3][0]]);
     eq('ordered', $e['store']->checkouts[1]['status']);

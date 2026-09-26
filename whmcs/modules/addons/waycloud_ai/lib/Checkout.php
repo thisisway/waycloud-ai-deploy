@@ -393,6 +393,7 @@ final class Checkout
             'country' => 'BR',
             'phonenumber' => (string) self::phone((string) $in['telefone']),
             'password2' => $passwordless ? bin2hex(($this->randomBytes)(24)) : (string) $in['senha'], // passwordless: an unknown random one until the customer sets theirs
+            'noemail' => $passwordless, // the set-password e-mail is the welcome: the stock sign-up e-mail would only add seconds
             'notes' => 'Cadastro rápido via IA: endereço a completar pelo cliente.',
             'customfields' => base64_encode(serialize(array_filter([
                 $ids['Tipo de documento'] => $type,
