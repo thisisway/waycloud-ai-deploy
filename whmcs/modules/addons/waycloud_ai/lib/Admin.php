@@ -25,14 +25,14 @@ final class Admin
 
         if (($_SERVER['REQUEST_METHOD'] ?? '') === 'POST' && isset($_POST['wc_save_plans'])) {
             $map = [];
-            foreach (['static' => 'pid_static', 'php' => 'pid_php'] as $type => $field) {
+            foreach (['static' => 'pid_static', 'php' => 'pid_php', 'wordpress' => 'pid_wordpress'] as $type => $field) {
                 $pid = filter_var($_POST[$field] ?? '', FILTER_VALIDATE_INT);
                 if ($pid !== false && $pid > 0 && $whmcs->productInfo($pid) !== null) {
                     $map[$type] = $pid;
                 }
             }
             $store->savePlanMap($map);
-            $notice = count($map) === 2 ? 'Mapa de planos salvo.' : 'Salvo, mas algum produto não foi encontrado e ficou de fora.';
+            $notice = count($map) === 3 ? 'Mapa de planos salvo.' : 'Salvo, mas algum produto não foi encontrado e ficou de fora.';
         }
 
         $h = '<h2>Way Cloud AI Deploy</h2>';
@@ -52,6 +52,7 @@ final class Admin
             . '<form method="post" action="' . self::h($moduleLink) . '"><input type="hidden" name="token" value="' . self::h($token) . '">'
             . '<p>Sites estáticos e SPA: <input type="number" name="pid_static" value="' . self::h($map['static'] ?? '') . '" min="1"> '
             . 'Sites PHP: <input type="number" name="pid_php" value="' . self::h($map['php'] ?? '') . '" min="1"> '
+            . 'Sites WordPress: <input type="number" name="pid_wordpress" value="' . self::h($map['wordpress'] ?? '') . '" min="1"> '
             . '<button type="submit" name="wc_save_plans" value="1" class="btn btn-primary">Salvar</button></p></form>';
 
         $h .= '<h3>Últimas contratações</h3><table class="datatable" width="100%"><tr><th>#</th><th>Status</th><th>Plano (pid)</th><th>Ciclo</th><th>Domínio</th><th>Pedido</th><th>Fatura</th><th>Serviço</th><th>Criada em</th></tr>';

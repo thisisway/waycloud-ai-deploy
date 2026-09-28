@@ -40,7 +40,7 @@ final class Diagnostics
             : 'O cadastro rápido não preenche: ' . implode(', ', $unhandled) . '. Torne-os opcionais no WHMCS, ou a compra vai falhar.');
 
         $map = $store->planMap();
-        foreach (['static' => 'Sites estáticos e SPA', 'php' => 'Sites PHP'] as $type => $label) {
+        foreach (['static' => 'Sites estáticos e SPA', 'php' => 'Sites PHP', 'wordpress' => 'Sites WordPress'] as $type => $label) {
             $pid = $map[$type] ?? 0;
             $info = $pid > 0 ? $whmcs->productInfo($pid) : null;
             $add('Produto para ' . $label, $info !== null, $info !== null ? $info['name'] . ' (pid ' . $pid . ')' : 'Escolha o produto na seção "Mapa de planos".');

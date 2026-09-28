@@ -146,7 +146,7 @@ describe("publicar", () => {
 
   it("refuses what cannot be published, with fixed messages", async () => {
     const s1 = await paidSession();
-    expect(await publish(s1.token, { "wp-config.php": "<?php", "index.php": "<?php" })).toMatchObject({ codigo: "PROJETO_NAO_SUPORTADO" });
+    expect(await publish(s1.token, { "index.php": "<?php", "composer.json": JSON.stringify({ require: { "laravel/framework": "^10" } }) })).toMatchObject({ codigo: "PROJETO_NAO_SUPORTADO" });
     const s2 = await paidSession();
     expect(await publish(s2.token, { "package.json": JSON.stringify({ devDependencies: { vite: "5" } }), "index.html": "x" })).toMatchObject({ codigo: "PASTA_BUILD_AUSENTE" });
     const s3 = await paidSession();

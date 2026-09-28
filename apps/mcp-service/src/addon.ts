@@ -14,7 +14,7 @@ export class AddonError extends Error {
 }
 
 export interface AddonPlan {
-  type: "static" | "php";
+  type: "static" | "php" | "wordpress";
   pid: number;
   name: string;
   monthlyCents: number;
@@ -114,7 +114,7 @@ const domainOrderResponse = z.object({
 });
 const domainStatusResponse = z.object({ status: z.enum(["awaiting_payment", "registering", "registered", "failed", "canceled"]), domain: z.string().nullable() });
 const plansResponse = z.object({
-  plans: z.array(z.object({ type: z.enum(["static", "php"]), pid: z.number().int(), name: z.string(), monthly_cents: z.number().int(), annual_cents: z.number().int() })),
+  plans: z.array(z.object({ type: z.enum(["static", "php", "wordpress"]), pid: z.number().int(), name: z.string(), monthly_cents: z.number().int(), annual_cents: z.number().int() })),
 });
 
 export interface AddonConfig {

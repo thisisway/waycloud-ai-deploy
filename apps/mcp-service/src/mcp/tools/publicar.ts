@@ -41,8 +41,13 @@ export default defineTool(
     if (analise.avisos.some((v) => v.codigo === "PASTA_BUILD_AUSENTE")) return erro("PASTA_BUILD_AUSENTE");
     if (!analise.suportado || folder === null) return erro("PROJETO_NAO_SUPORTADO");
 
-    const pkg = buildSitePackage(prepared.files, folder, analise.tipo === "spa");
-    const deployId = await createDeploy(ctx, sub, upload.id, pkg, { spa: analise.tipo === "spa", phpVersion: analise.versao_php });
+    // A .sql dump travels alongside a WordPress upload but must never land inside the public docroot the
+    // agent extracts: it's split out here and sent to the agent through a separate download.
+    const isWp = analise.tipo === "wordpress";
+    const dumpEntry = isWp ? [...prepared.files].find(([p]) => p.toLowerCase().endsWith(".sql")) : undefined;
+    const siteFiles = dumpEntry ? new Map([...prepared.files].filter(([p]) => p !== dumpEntry[0])) : prepared.files;
+    const pkg = buildSitePackage(siteFiles, folder, analise.tipo === "spa");
+    const deployId = await createDeploy(ctx, sub, upload.id, pkg, { spa: analise.tipo === "spa", phpVersion: analise.versao_php, needsDb: isWp, dbDump: dumpEntry?.[1] });
     await ctx.db.query("INSERT INTO audit_log (correlation_id, actor, action, meta) VALUES ($1, 'session', 'deploy.queued', $2::text::jsonb)", [session.id, JSON.stringify({ deploy_id: deployId, type: analise.tipo })]);
     return ok("DEPLOY_INICIADO", { deploy_id: deployId });
   },

@@ -173,7 +173,6 @@ export const AVISOS = {
   VERSAO_PHP_INDISPONIVEL: "A versão de PHP pedida pelo projeto não está disponível. Vamos usar a mais próxima.",
   PROJETO_GRANDE: "O projeto é maior do que o limite de todos os planos.",
   FRAMEWORK_PHP_NAO_SUPORTADO: "Frameworks PHP como Laravel ainda não são publicados automaticamente.",
-  WORDPRESS_NAO_SUPORTADO: "Sites WordPress ainda não são publicados automaticamente.",
   NODE_NAO_SUPORTADO: "Aplicações Node.js com servidor ainda não são publicadas automaticamente.",
   ARQUIVOS_DESNECESSARIOS_REMOVIDOS: "Removi arquivos desnecessários (como node_modules e .git) do pacote.",
   TIPO_DESCONHECIDO: "Não consegui identificar o tipo do projeto.",

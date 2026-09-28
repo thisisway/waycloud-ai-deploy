@@ -154,7 +154,7 @@ describe("criar_previa", () => {
     }
   });
 
-  it("PHP has no preview; unbuilt SPAs and WordPress are refused with the right message", async () => {
+  it("PHP and WordPress have no preview; unbuilt SPAs are refused with the right message", async () => {
     const run = async (files: Record<string, string>) => {
       const sessao_id = await newSession();
       await call("enviar_arquivos", { sessao_id, arquivos: inline(files) });
@@ -162,7 +162,7 @@ describe("criar_previa", () => {
     };
     expect(await run({ "index.php": "<?php echo 1; ?>" })).toMatchObject({ ok: false, codigo: "PREVIA_INDISPONIVEL_PHP" });
     expect(await run({ "package.json": JSON.stringify({ devDependencies: { vite: "5" } }), "index.html": "x", "src/a.ts": "x" })).toMatchObject({ codigo: "PASTA_BUILD_AUSENTE" });
-    expect(await run({ "wp-config.php": "<?php", "index.php": "<?php" })).toMatchObject({ codigo: "PROJETO_NAO_SUPORTADO" });
+    expect(await run({ "wp-config.php": "<?php", "index.php": "<?php" })).toMatchObject({ codigo: "PREVIA_INDISPONIVEL_PHP" });
     const previews = await ctx.db.query("SELECT 1 FROM previews p JOIN uploads u ON u.id = p.upload_id WHERE u.source = 'inline' AND p.status = 'failed'");
     expect(previews).toHaveLength(0);
   });

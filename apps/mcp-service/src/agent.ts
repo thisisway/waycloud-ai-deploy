@@ -120,6 +120,16 @@ export function registerAgentRoutes(app: FastifyInstance, ctx: ToolContext) {
       return reply.header("content-type", "application/zip").send(Buffer.from(zip));
     });
 
+    scope.get<{ Params: { id: string } }>("/jobs/:id/dump", async (req, reply) => {
+      const [d] = await ctx.db.query<{ db_dump_key: string | null }>(
+        "SELECT d.db_dump_key FROM deploys d JOIN subscriptions s ON s.whmcs_service_id = d.subscription_id WHERE d.id::text = $1 AND s.server_id = $2 AND d.status IN ('sending', 'validating')",
+        [req.params.id, serverOf(req)],
+      );
+      const sql = d?.db_dump_key ? await ctx.storage.get(d.db_dump_key) : null;
+      if (!sql) return reply.code(404).send({ error: "not_found" });
+      return reply.header("content-type", "application/sql").send(Buffer.from(sql));
+    });
+
     scope.post<{ Params: { id: string } }>("/jobs/:id/report", async (req, reply) => {
       const body = report.safeParse(req.body);
       if (!body.success || !/^[0-9a-f-]{36}$/.test(req.params.id)) return reply.code(400).send({ error: "invalid_body" });

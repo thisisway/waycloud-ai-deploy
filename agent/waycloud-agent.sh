@@ -29,7 +29,7 @@ WC_MAX_BYTES="${WC_MAX_BYTES:-524288000}"    # 500 MB
 WC_MAX_FILES="${WC_MAX_FILES:-50000}"
 
 # Versions only ever go up (YYYY-MM-DD.NN): a replayed older script is refused even when its signature is valid.
-WC_AGENT_VERSION="2026-09-26.03"
+WC_AGENT_VERSION="2026-09-28.01"
 # Public key that new versions of this script must be signed with (the private key never leaves the maintainer's machine).
 WC_SIGN_PUB='-----BEGIN PUBLIC KEY-----
 MIIBojANBgkqhkiG9w0BAQEFAAOCAY8AMIIBigKCAYEA4BAeaQeUa8dGkXKKtxqM
@@ -160,10 +160,11 @@ local_check() { # 2xx from this very server (Host header + --resolve), independe
 }
 
 deploy() { # deploy JOB-JSON-FILE
-  local f=$1 id domain sha size php keep
+  local f=$1 id domain sha size php keep needs_db
   id=$(jq -r '.job_id // empty' "$f");      domain=$(jq -r '.domain // empty' "$f")
   sha=$(jq -r '.sha256 // empty' "$f");     size=$(jq -r '.size_bytes // empty' "$f")
   php=$(jq -r '.php_version // empty' "$f"); keep=$(jq -r '.keep_snapshots // 5' "$f")
+  needs_db=$(jq -r 'if .needs_db == true then "true" else "false" end' "$f")
 
   is_uuid "$id" || { log "ignoring a job with an invalid id"; return; }
   log "job=$id starting domain=$domain"
@@ -201,6 +202,9 @@ deploy() { # deploy JOB-JSON-FILE
   find "$rel" ! -type f ! -type d -delete            # nor devices, sockets, fifos
   if [ "$(find "$rel" | wc -l)" -gt "$WC_MAX_FILES" ]; then report "$id" failed extract too_many_files; rm -rf -- "$rel"; return; fi
   if ! [ -f "$rel/index.html" ] && ! [ -f "$rel/index.htm" ] && ! [ -f "$rel/index.php" ]; then report "$id" failed validate no_index; rm -rf -- "$rel"; return; fi
+  if [ "$needs_db" = true ]; then
+    provision_wordpress "$id" "$domain" "$rel" "$doc" || { report "$id" failed db db_provision_failed; send_diag "$id" db_provision_failed "$domain"; rm -rf -- "$rel"; return; }
+  fi
   find "$rel" -type d -exec chmod 755 {} + ; find "$rel" -type f -exec chmod 644 {} +
   chown -R -h "$uid:$gid" "$rel"; chmod "$mode" "$rel"
   command -v restorecon >/dev/null 2>&1 && restorecon -R "$rel" >/dev/null 2>&1
@@ -231,6 +235,100 @@ deploy() { # deploy JOB-JSON-FILE
   if [ "$ssl" = true ]; then rm -f "$WC_STATE/ssl-pending/$domain@deploy"; else mark_ssl_pending "$id" "$domain" deploy; send_diag "$id" ssl_pending "$domain"; fi
   prune "$work/snapshots" "$keep"
   report "$id" published finished "" "$ssl"
+}
+
+rand_token() { openssl rand -base64 "$(($1 * 2))" | tr -dc 'A-Za-z0-9' | head -c "$1"; } # LEN alnum chars: safe unescaped in PHP single quotes and SQL
+
+# WordPress needs a database before it can run. Created once per domain: the live docroot's own wp-config.php
+# (still $doc at this point, the new release is only $rel) is the source of truth for "does one already exist" -
+# a redeploy reuses it verbatim instead of creating a second database. Uploaded wp-config.php is never trusted
+# (customer can't know real credentials yet); ours is always written fresh. The password only ever exists inside
+# wp-config.php: it is passed to Plesk via PSA_PASSWORD (never argv, never logged) and never appears in any report.
+# ponytail: a later deploy that stops being WordPress (needs_db=false) leaves its database behind - no cleanup here.
+provision_wordpress() { # provision_wordpress JOB DOMAIN REL-DIR LIVE-DOCROOT
+  local id=$1 domain=$2 rel=$3 doc=$4
+  local dbname="wc_$(printf '%s' "$domain" | tr '.-' '__' | cut -c1-55)"
+  rm -f "$rel/wp-config.php"
+
+  if [ -f "$doc/wp-config.php" ]; then
+    cp "$doc/wp-config.php" "$rel/wp-config.php" || return 1
+  else
+    local dbuser="$dbname" dbpass; dbpass=$(rand_token 32)
+    [ -n "$dbpass" ] || return 1
+    if ! PSA_PASSWORD="$dbpass" "$WC_PLESK" bin database --create "$dbname" -domain "$domain" -type mysql -charset utf8mb4 -collation utf8mb4_unicode_ci -add_user "$dbuser" -passwd "" >> "$WC_STATE/plesk.log" 2>&1; then
+      "$WC_PLESK" bin database --remove "$dbname" >> "$WC_STATE/plesk.log" 2>&1
+      return 1
+    fi
+    cat > "$rel/wp-config.php" <<PHPCFG
+<?php
+define('DB_NAME', '$dbname');
+define('DB_USER', '$dbuser');
+define('DB_PASSWORD', '$dbpass');
+define('DB_HOST', 'localhost:3306');
+define('DB_CHARSET', 'utf8mb4');
+define('DB_COLLATE', '');
+define('AUTH_KEY', '$(rand_token 64)');
+define('SECURE_AUTH_KEY', '$(rand_token 64)');
+define('LOGGED_IN_KEY', '$(rand_token 64)');
+define('NONCE_KEY', '$(rand_token 64)');
+define('AUTH_SALT', '$(rand_token 64)');
+define('SECURE_AUTH_SALT', '$(rand_token 64)');
+define('LOGGED_IN_SALT', '$(rand_token 64)');
+define('NONCE_SALT', '$(rand_token 64)');
+\$table_prefix = 'wp_';
+define('WP_DEBUG', false);
+if (!defined('ABSPATH')) define('ABSPATH', __DIR__ . '/');
+require_once ABSPATH . 'wp-settings.php';
+PHPCFG
+    [ -s "$rel/wp-config.php" ] || return 1
+  fi
+
+  local http dump="$WC_STATE/$id.sql"
+  http=$(api GET "/jobs/$id/dump" ""); mv -f "$BODY" "$dump" 2>/dev/null
+  if [ "$http" = 200 ] && [ -s "$dump" ]; then
+    import_wp_dump "$rel/wp-config.php" "$dump" "$domain" || { rm -f "$dump"; return 1; }
+  fi
+  rm -f "$dump"
+  return 0
+}
+
+# A .sql dump is a migration from another host: import it, then point the site at the new domain. The dump's
+# own table prefix (often not "wp_") is detected and wp-config.php is corrected to match before anything reads
+# it. wp-cli's search-replace also fixes URLs serialized inside post/widget content; the plain-SQL fallback (no
+# wp-cli) only corrects wp_options siteurl/home - ceiling: serialized data elsewhere keeps the old domain.
+# Not atomic against a dump's own CREATE TABLE statements (DDL auto-commits in MySQL); the transaction still
+# protects the bulk INSERT rows from a mid-import failure.
+import_wp_dump() { # import_wp_dump WP-CONFIG-PATH DUMP-PATH DOMAIN
+  local cfg=$1 dump=$2 domain=$3 dbname dbuser dbpass cnf prefix old
+  dbname=$(sed -n "s/.*DB_NAME', '\([^']*\)'.*/\1/p" "$cfg" | head -1)
+  dbuser=$(sed -n "s/.*DB_USER', '\([^']*\)'.*/\1/p" "$cfg" | head -1)
+  dbpass=$(sed -n "s/.*DB_PASSWORD', '\([^']*\)'.*/\1/p" "$cfg" | head -1)
+  [ -n "$dbname" ] && [ -n "$dbuser" ] || return 1
+
+  cnf=$(mktemp) || return 1
+  chmod 600 "$cnf"
+  printf '[client]\nuser=%s\npassword=%s\n' "$dbuser" "$dbpass" > "$cnf"
+
+  if ! { echo "SET autocommit=0; START TRANSACTION;"; cat "$dump"; echo "COMMIT;"; } | mysql --defaults-extra-file="$cnf" "$dbname"; then
+    rm -f "$cnf"; return 1
+  fi
+
+  prefix=$(mysql --defaults-extra-file="$cnf" -N -e "SHOW TABLES LIKE '%options'" "$dbname" 2>/dev/null | head -1 | sed 's/options$//')
+  if [ -n "$prefix" ] && [ "$prefix" != "wp_" ]; then
+    sed -i "s/^\\\$table_prefix = 'wp_';/\\\$table_prefix = '${prefix}';/" "$cfg"
+  fi
+  [ -n "$prefix" ] || prefix=wp_
+
+  old=$(mysql --defaults-extra-file="$cnf" -N -e "SELECT option_value FROM \`${prefix}options\` WHERE option_name='siteurl' LIMIT 1" "$dbname" 2>/dev/null)
+  if [ -n "$old" ]; then
+    local phpbin="/opt/plesk/php/8.3/bin/php" wpdir; wpdir=$(dirname "$cfg")
+    if ! { [ -x "$phpbin" ] && "$phpbin" /usr/local/bin/wp --path="$wpdir" --allow-root search-replace "$old" "https://$domain" --all-tables >> "$WC_STATE/plesk.log" 2>&1; }; then
+      mysql --defaults-extra-file="$cnf" -e "UPDATE \`${prefix}options\` SET option_value='https://$domain' WHERE option_name IN ('siteurl','home')" "$dbname" >> "$WC_STATE/plesk.log" 2>&1
+      log "job db url fallback used for $domain: siteurl/home only, serialized data in ${prefix}posts/${prefix}postmeta not fixed"
+    fi
+  fi
+  rm -f "$cnf"
+  return 0
 }
 
 # What runs on a customer's site is theirs to write, so the server limits what it can do: no shell for the subscription's system

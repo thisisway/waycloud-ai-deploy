@@ -391,6 +391,75 @@ describe.skipIf(!enabled)("deploy agent (bash, root) against the real service", 
     expect((await statusOf(s, id)).status).toBe("revertido");
   }, 120_000);
 
+  describe("WordPress: database provisioning", () => {
+    const dbNameOf = (domain: string) => `wc_${domain.replace(/[.-]/g, "_")}`;
+    const wpFiles = { "wp-config.php": "<?php // uploaded, must never be trusted\n", "index.php": "<?php // wp core stub\n" };
+    const dbCreds = async (domain: string) => {
+      const cfg = await dx(`cat ${doc(domain)}/wp-config.php`);
+      const get = (k: string) => new RegExp(`define\\('${k}', '([^']*)'\\)`).exec(cfg)?.[1];
+      return { name: get("DB_NAME"), user: get("DB_USER"), pass: get("DB_PASSWORD") };
+    };
+    const mysqlAs = (c: { user?: string; pass?: string }, dbname: string, sql: string) => dx(`mysql -u'${c.user}' -p'${c.pass}' -N -e "${sql}" '${dbname}'`);
+
+    it("first WordPress deploy creates a real database and a working wp-config.php", async () => {
+      const s = await site("OLD-WP");
+      const id = await publish(s, wpFiles);
+      expect((await agent()).code).toBe(0);
+      expect((await statusOf(s, id)).status).toBe("publicado");
+
+      const dbname = dbNameOf(s.domain);
+      expect(await dx(`mysql -uroot -N -e "SHOW DATABASES LIKE '${dbname}'"`)).toBe(dbname);
+      const c = await dbCreds(s.domain);
+      expect(c.name).toBe(dbname);
+      expect(c.pass).toMatch(/^[A-Za-z0-9]{32}$/);
+      expect(await mysqlAs(c, dbname, "SELECT 1")).toBe("1"); // the generated user can actually connect
+      expect(await dx("cat /tmp/plesk.log /var/lib/waycloud-agent/agent.log")).not.toContain(c.pass!); // never logged
+    }, 120_000);
+
+    it("redeploy reuses the same database and password instead of creating a second one", async () => {
+      const s = await site("OLD-WP-2");
+      await publish(s, wpFiles);
+      expect((await agent()).code).toBe(0);
+      const first = await dbCreds(s.domain);
+
+      await publish(s, { ...wpFiles, "index.php": "<?php // v2\n" });
+      await dx("rm -f /tmp/plesk.log");
+      expect((await agent()).code).toBe(0);
+      const second = await dbCreds(s.domain);
+
+      expect(second).toEqual(first);
+      expect(await dx("cat /tmp/plesk.log")).not.toContain("database --create");
+    }, 180_000);
+
+    it("a .sql dump is imported and the site URL is corrected, even with a non-default table prefix", async () => {
+      const s = await site("OLD-WP-3");
+      const dump = [
+        "CREATE TABLE xyz_options (option_name VARCHAR(191) PRIMARY KEY, option_value TEXT);",
+        "INSERT INTO xyz_options (option_name, option_value) VALUES ('siteurl','http://old-host.example'), ('home','http://old-host.example');",
+      ].join("\n");
+      const id = await publish(s, { ...wpFiles, "dump.sql": dump });
+      expect((await agent()).code).toBe(0);
+      expect((await statusOf(s, id)).status).toBe("publicado");
+
+      expect(await dx(`grep table_prefix ${doc(s.domain)}/wp-config.php`)).toContain("xyz_");
+      const c = await dbCreds(s.domain);
+      const dbname = dbNameOf(s.domain);
+      expect(await mysqlAs(c, dbname, "SELECT option_value FROM xyz_options WHERE option_name='siteurl'")).toBe(`https://${s.domain}`);
+      expect(await mysqlAs(c, dbname, "SELECT option_value FROM xyz_options WHERE option_name='home'")).toBe(`https://${s.domain}`);
+    }, 120_000);
+
+    it("if the database cannot be created the deploy fails before touching the live site, and no database is left behind", async () => {
+      const s = await site("OLD-WP-4");
+      await dx("touch /tmp/plesk-fail-db");
+      const id = await publish(s, wpFiles);
+      expect((await agent()).code).toBe(0);
+      await dx("rm -f /tmp/plesk-fail-db");
+      expect(await dx(`cat ${doc(s.domain)}/index.html`)).toBe("OLD-WP-4"); // provisioning happens pre-swap: the old site was never touched
+      expect((await statusOf(s, id)).status).toBe("falhou");
+      expect(await dx(`mysql -uroot -N -e "SHOW DATABASES LIKE '${dbNameOf(s.domain)}'"`)).toBe("");
+    }, 120_000);
+  });
+
   it("keeps only the newest N snapshots", async () => {
     const s = await site("V0");
     for (let i = 1; i <= 4; i++) {

@@ -1,6 +1,8 @@
 #!/bin/bash
 # Fake Plesk CLI: records every call. Failure switches: /tmp/plesk-fail-php (php handler), /tmp/plesk-fail-harden (shell/PHP limits), /tmp/plesk-fail-rename (rename),
-# /tmp/plesk-keep-dir (rename "succeeds" but the vhost folder does not move).
+# /tmp/plesk-keep-dir (rename "succeeds" but the vhost folder does not move), /tmp/plesk-fail-db (database creation).
+# `database --create`/`--remove` are simulated against the container's real MariaDB (started by start.sh),
+# since the point of these tests is SQL correctness, not just "a command was called".
 echo "$*" >> /tmp/plesk.log
 case "$*" in
   *php_handler_id*) [ -f /tmp/plesk-fail-php ] && exit 1 ;;
@@ -9,6 +11,15 @@ case "$*" in
     [ -f /tmp/plesk-fail-rename ] && exit 1
     old=$4; new=$6
     [ -f /tmp/plesk-keep-dir ] || mv "/var/www/vhosts/$old" "/var/www/vhosts/$new"
+    ;;
+  *"database --create"*)
+    [ -f /tmp/plesk-fail-db ] && exit 1
+    args=("$@"); dbname=${args[3]}; dbuser=""
+    for i in "${!args[@]}"; do [ "${args[$i]}" = "-add_user" ] && dbuser="${args[$((i + 1))]}"; done
+    mysql -uroot -e "CREATE DATABASE IF NOT EXISTS \`$dbname\`; CREATE USER IF NOT EXISTS '$dbuser'@'localhost' IDENTIFIED BY '$PSA_PASSWORD'; GRANT ALL PRIVILEGES ON \`$dbname\`.* TO '$dbuser'@'localhost'; FLUSH PRIVILEGES;" || exit 1
+    ;;
+  *"database --remove"*)
+    mysql -uroot -e "DROP DATABASE IF EXISTS \`$4\`;" 2>/dev/null
     ;;
 esac
 exit 0

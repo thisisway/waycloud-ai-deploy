@@ -18,7 +18,7 @@ export interface Plan {
 export const PLANS: Plan[] = [
   { pid: 173, name: "Speed BR", diskGb: 20, domains: 1, monthlyCents: 3590, annualCents: 38770, types: ["estatico", "spa"], blurb: "Sites estáticos, landing pages e aplicativos web já compilados." },
   { pid: 174, name: "Boost BR", diskGb: 50, domains: 2, monthlyCents: 5590, annualCents: 60372, types: ["php"], blurb: "Sites em PHP e projetos com mais tráfego." },
-  { pid: 175, name: "Pro BR", diskGb: 120, domains: 5, monthlyCents: 9990, annualCents: 107892, types: [], blurb: "Vários sites ou projetos maiores." },
+  { pid: 175, name: "Pro BR", diskGb: 120, domains: 5, monthlyCents: 9990, annualCents: 107892, types: ["wordpress"], blurb: "Sites WordPress e vários sites ou projetos maiores." },
   { pid: 215, name: "Premium BR", diskGb: 200, domains: 10, monthlyCents: 19590, annualCents: 107892, types: [], blurb: "Maior capacidade de disco e domínios." },
 ];
 
@@ -27,6 +27,7 @@ export const PLANS: Plan[] = [
 const META = {
   static: { diskGb: 20, domains: 1, types: ["estatico", "spa"] as TipoProjeto[], blurb: "Sites estáticos, landing pages e aplicativos web já compilados." },
   php: { diskGb: 50, domains: 2, types: ["php"] as TipoProjeto[], blurb: "Sites em PHP e projetos com mais tráfego." },
+  wordpress: { diskGb: 120, domains: 5, types: ["wordpress"] as TipoProjeto[], blurb: "Sites WordPress." },
 } as const;
 
 export class PlansUnavailable extends Error {}

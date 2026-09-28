@@ -59,9 +59,9 @@ describe("detectProject", () => {
     expect(run(["package.json", "server.js"], { pkg: { dependencies: { express: "4" } } }).tipo).toBe("node");
   });
 
-  it("WordPress is recognised and refused", () => {
+  it("WordPress -> Pro BR, always needs a database", () => {
     const r = run(["wp-config.php", "wp-content/themes/x/style.css", "index.php"]);
-    expect(r).toMatchObject({ tipo: "wordpress", suportado: false, plano_recomendado: null });
+    expect(r).toMatchObject({ tipo: "wordpress", suportado: true, pasta_publicar: ".", versao_php: "8.3", precisa_banco: true, plano_recomendado: { pid: 175 } });
   });
 
   it("plain PHP -> Boost BR, default PHP 8.3", () => {

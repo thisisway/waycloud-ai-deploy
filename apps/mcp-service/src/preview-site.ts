@@ -15,7 +15,7 @@ export function previewSiteFromFiles(files: Map<string, Uint8Array>, plans: Plan
     { arquivos: [...files].map(([caminho, b]) => ({ caminho, tamanho: b.length })), package_json: text(files.get("package.json")), composer_json: text(files.get("composer.json")) },
     plans,
   );
-  if (analise.tipo === "php") return { ok: false, codigo: "PREVIA_INDISPONIVEL_PHP" };
+  if (analise.tipo === "php" || analise.tipo === "wordpress") return { ok: false, codigo: "PREVIA_INDISPONIVEL_PHP" };
   if (analise.avisos.some((v) => v.codigo === "PASTA_BUILD_AUSENTE")) return { ok: false, codigo: "PASTA_BUILD_AUSENTE" };
   if (!analise.suportado || folder === null) return { ok: false, codigo: "PROJETO_NAO_SUPORTADO" };
 

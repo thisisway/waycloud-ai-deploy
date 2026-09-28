@@ -81,7 +81,13 @@ export function analyzeProject(m: Manifesto, plans: Plan[]): { analise: Analise;
 
   if (has("wp-config.php") || paths.some((p) => /^wp-(content|includes|admin)\//.test(p))) {
     tipo = "wordpress";
-    avisos.add("WORDPRESS_NAO_SUPORTADO");
+    suportado = true;
+    pasta = ".";
+    const platform = (composer?.config as Json | undefined)?.platform as Json | undefined;
+    const constraint = (composer?.require as Json | undefined)?.php ?? platform?.php;
+    const picked = pickPhpVersion(typeof constraint === "string" ? constraint : undefined);
+    phpVersion = picked.version;
+    if (!picked.found) avisos.add("VERSAO_PHP_INDISPONIVEL");
   } else if (pkg && serverDeps.length && !built) {
     tipo = "node";
     avisos.add("NODE_NAO_SUPORTADO");
@@ -131,7 +137,7 @@ export function analyzeProject(m: Manifesto, plans: Plan[]): { analise: Analise;
     suportado,
     pasta_publicar: pasta === null ? null : safeEchoPath(pasta),
     versao_php: phpVersion,
-    precisa_banco: hasSql || allDeps.some((d) => DB_DEPS.includes(d)) || composerReq.some((d) => /^doctrine\/|^illuminate\/database$|^laravel\/framework$/.test(d)),
+    precisa_banco: tipo === "wordpress" || hasSql || allDeps.some((d) => DB_DEPS.includes(d)) || composerReq.some((d) => /^doctrine\/|^illuminate\/database$|^laravel\/framework$/.test(d)),
     precisa_email: [...allDeps, ...composerReq].some((d) => MAIL_DEPS.includes(d)),
     precisa_variaveis_ambiente: hasEnv || allDeps.includes("dotenv") || composerReq.includes("vlucas/phpdotenv"),
     quantidade_arquivos: files.length,

@@ -55,9 +55,18 @@ describe("flow: iniciar_sessao -> analisar_projeto -> listar_planos", () => {
   it("reports unsupported projects as a normal answer with a friendly message", async () => {
     const { dados } = await call("iniciar_sessao", {});
     const sessao_id = (dados as { sessao_id: string }).sessao_id;
-    const r = await call("analisar_projeto", { sessao_id, manifesto: { arquivos: [{ caminho: "wp-config.php", tamanho: 10 }] } });
+    const manifesto = { arquivos: [{ caminho: "package.json", tamanho: 10 }, { caminho: "server.js", tamanho: 10 }], package_json: JSON.stringify({ dependencies: { express: "4" } }) };
+    const r = await call("analisar_projeto", { sessao_id, manifesto });
     contract("analisar_projeto", r);
-    expect(r).toMatchObject({ ok: true, codigo: "PROJETO_NAO_SUPORTADO", dados: { tipo: "wordpress", suportado: false } });
+    expect(r).toMatchObject({ ok: true, codigo: "PROJETO_NAO_SUPORTADO", dados: { tipo: "node", suportado: false } });
+  });
+
+  it("recognises WordPress as a supported project", async () => {
+    const { dados } = await call("iniciar_sessao", {});
+    const sessao_id = (dados as { sessao_id: string }).sessao_id;
+    const r = await call("analisar_projeto", { sessao_id, manifesto: { arquivos: [{ caminho: "wp-config.php", tamanho: 10 }, { caminho: "index.php", tamanho: 10 }] } });
+    contract("analisar_projeto", r);
+    expect(r).toMatchObject({ ok: true, codigo: "PROJETO_ANALISADO", dados: { tipo: "wordpress", suportado: true, precisa_banco: true, plano_recomendado: { pid: 175 } } });
   });
 
   it("rejects an unknown or expired session", async () => {
