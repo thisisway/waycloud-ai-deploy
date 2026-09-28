@@ -124,10 +124,18 @@ export interface AddonConfig {
   timeoutMs?: number;
 }
 
+// registerCheckout and domainOrder make WHMCS create a client and/or an order in the same request: WHMCS's own
+// synchronous mail sending on those calls (its mandatory e-mail verification, the admin order notification...) has been
+// observed taking from a few seconds up to ~70s, depending on the mail relay, well past what a signup should need.
+// A short timeout there does not make it faster, it just tells the customer "failed" while WHMCS finishes the order anyway,
+// producing duplicate signups. ponytail: this bound, not a fix for the slow mail; the real fix is deferring those sends
+// server-side (WHMCS "EnableEmailVerification" is a site-wide setting, not ours to flip without asking).
+const SLOW_TIMEOUT_MS = 55_000;
+
 export function httpAddonClient(cfg: AddonConfig): AddonClient {
   const doFetch = cfg.fetchFn ?? fetch;
 
-  async function call(payload: object): Promise<unknown> {
+  async function call(payload: object, timeoutMs = cfg.timeoutMs ?? 10_000): Promise<unknown> {
     const body = JSON.stringify(payload);
     const sig = sign(cfg.secret, body);
     let res: Response;
@@ -142,7 +150,7 @@ export function httpAddonClient(cfg: AddonConfig): AddonClient {
           "user-agent": "WayCloud-MCP/1.0", // the Cloudflare bot rule blocks requests without a User-Agent
         },
         body,
-        signal: AbortSignal.timeout(cfg.timeoutMs ?? 10_000),
+        signal: AbortSignal.timeout(timeoutMs),
       });
     } catch {
       throw new AddonError("unreachable", 0);
@@ -159,7 +167,7 @@ export function httpAddonClient(cfg: AddonConfig): AddonClient {
     },
 
     async registerCheckout(r) {
-      const parsed = signupResponse.safeParse(await call({ action: "register_checkout", session_id: r.sessionId, pid: r.pid, cycle: r.cycle, form: r.form }));
+      const parsed = signupResponse.safeParse(await call({ action: "register_checkout", session_id: r.sessionId, pid: r.pid, cycle: r.cycle, form: r.form }, Math.max(cfg.timeoutMs ?? 0, SLOW_TIMEOUT_MS)));
       if (!parsed.success) throw new AddonError("bad_response", 200);
       const d = parsed.data;
       // Both links are opened by the customer: they must live on the WHMCS we called, never somewhere else.
@@ -182,7 +190,7 @@ export function httpAddonClient(cfg: AddonConfig): AddonClient {
     },
 
     async domainOrder(r) {
-      const parsed = domainOrderResponse.safeParse(await call({ action: "domain_order", session_id: r.sessionId, checkout_id: r.checkoutId, domain: r.domain, address: r.address }));
+      const parsed = domainOrderResponse.safeParse(await call({ action: "domain_order", session_id: r.sessionId, checkout_id: r.checkoutId, domain: r.domain, address: r.address }, Math.max(cfg.timeoutMs ?? 0, SLOW_TIMEOUT_MS)));
       if (!parsed.success) throw new AddonError("bad_response", 200);
       const d = parsed.data;
       if (d.redirect && new URL(d.redirect).host !== new URL(cfg.url).host) throw new AddonError("unexpected_host", 200); // the customer opens it

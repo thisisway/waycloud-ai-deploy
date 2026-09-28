@@ -255,6 +255,7 @@ async function submitSignup(event) {
   const button = $("signup-submit");
   button.disabled = true;
   button.textContent = "Enviando...";
+  setTimeout(() => { if (button.disabled) button.textContent = "Ainda enviando, pode levar até 1 minuto..."; }, 4000);
   const r = await signup(api, { sessao_id: state.sessao_id, plano_pid: chosen.pid, ciclo: cycle, ...values, nome: values.nome.trim(), email: values.email.trim(), website: f.website.value });
   if (r.ok) {
     save({ stage: "waiting", checkout_url: r.redirect });
@@ -669,6 +670,7 @@ async function submitBuy(event) {
   const button = $("buy-submit");
   button.disabled = true;
   button.textContent = "Criando o pedido...";
+  setTimeout(() => { if (button.disabled) button.textContent = "Ainda criando o pedido, pode levar até 1 minuto..."; }, 4000);
   try {
     const { status, body } = await postJson(api, "/web/domain/buy", { sessao_id: state.sessao_id, dominio: offer.dominio, endereco });
     if (status === 200 && body.ok) return showBuyPay(body);
