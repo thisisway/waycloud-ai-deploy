@@ -12,16 +12,19 @@
 </head>
 <body class="preview-view">
   <svg class="sprite" aria-hidden="true" focusable="false">
-    <symbol id="i-external" viewBox="0 0 24 24"><path d="M12 6H6a2 2 0 0 0-2 2v10a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2v-6"/><path d="M11 13l9-9"/><path d="M15 4h5v5"/></symbol>
+    <symbol id="i-desktop" viewBox="0 0 24 24"><rect x="3" y="4" width="18" height="12" rx="1.5"/><path d="M8 20h8M12 16v4"/></symbol>
+    <symbol id="i-tablet" viewBox="0 0 24 24"><rect x="6" y="2" width="12" height="20" rx="2"/><path d="M11 18h2"/></symbol>
+    <symbol id="i-mobile" viewBox="0 0 24 24"><rect x="8" y="2" width="8" height="20" rx="2"/><path d="M11 18h2"/></symbol>
+    <symbol id="i-arrow-right" viewBox="0 0 24 24"><path d="M5 12h14M13 6l6 6-6 6"/></symbol>
   </svg>
   <header class="view-bar">
     <a class="view-logo" href="https://waycloud.com.br"><img src="/waycloud-logo.svg" alt="Way Cloud"></a>
     <div class="seg" role="group" aria-label="Tamanho da tela">
-      <button type="button" class="dev-btn on" data-device="desktop" aria-pressed="true">Computador</button>
-      <button type="button" class="dev-btn" data-device="tablet" aria-pressed="false">Tablet</button>
-      <button type="button" class="dev-btn" data-device="mobile" aria-pressed="false">Celular</button>
+      <button type="button" class="dev-btn on" data-device="desktop" aria-pressed="true"><svg class="ic sm"><use href="#i-desktop"/></svg><span>Computador</span></button>
+      <button type="button" class="dev-btn" data-device="tablet" aria-pressed="false"><svg class="ic sm"><use href="#i-tablet"/></svg><span>Tablet</span></button>
+      <button type="button" class="dev-btn" data-device="mobile" aria-pressed="false"><svg class="ic sm"><use href="#i-mobile"/></svg><span>Celular</span></button>
     </div>
-    <a id="device-open" class="link-out" target="_blank" rel="noopener noreferrer"><span>Abrir em outra aba</span><svg class="ic"><use href="#i-external"/></svg></a>
+    <a href="/" class="btn"><span>Contratar agora</span><svg class="ic"><use href="#i-arrow-right"/></svg></a>
   </header>
   <div id="device-page">
     <div id="device-stage" class="device-stage">

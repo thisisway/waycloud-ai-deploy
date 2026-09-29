@@ -1,4 +1,5 @@
-// Device preview: the real preview site is shown in a frame of a phone, tablet or desktop screen, scaled to fit the pane.
+// Device preview: the real preview site is shown in a frame of a phone, tablet or desktop screen. Desktop fills
+// the pane at its true width (a real browser is not a fixed canvas); phone/tablet keep their real size, scaled to fit.
 
 /** Screen size (CSS px) of each device and the frame border on each side (the desktop height is only a minimum). */
 export const DEVICES = {
@@ -16,10 +17,10 @@ const MIN_SCALE = 0.3;
 export function fitDevice(device, availW, availH) {
   const d = DEVICES[device] ?? DEVICES.desktop;
   if (device === "desktop" || !DEVICES[device]) {
-    // A computer window is as tall as the pane allows (a page longer than that scrolls inside the frame), so the pane is filled.
-    const scale = Math.max(MIN_SCALE, Math.min(1, (availW - 2 * d.border) / d.w));
-    const screenH = Math.max(d.h, Math.round((availH - 2 * d.border) / scale));
-    return { scale, width: Math.round(d.w * scale + 2 * d.border), height: Math.round(screenH * scale + 2 * d.border), screenW: d.w, screenH };
+    // Real desktop browsing is not a fixed 1280px canvas: the frame fills the tab, so the site sees its true width.
+    const screenW = Math.max(320, availW - 2 * d.border);
+    const screenH = Math.max(d.h, availH - 2 * d.border);
+    return { scale: 1, width: screenW + 2 * d.border, height: screenH + 2 * d.border, screenW, screenH };
   }
   const scale = Math.max(MIN_SCALE, Math.min(1, (availW - 2 * d.border) / d.w, (availH - 2 * d.border) / d.h));
   return { scale, width: Math.round(d.w * scale + 2 * d.border), height: Math.round(d.h * scale + 2 * d.border), screenW: d.w, screenH: d.h };

@@ -278,7 +278,7 @@ code { flex: 1; min-width: 0; font-family: ui-monospace, "SF Mono", Consolas, mo
 .device-frame iframe { position: absolute; top: 0; left: 0; border: 0; background: var(--white); transform-origin: 0 0; }
 .device-size { font-size: 12.5px; color: var(--ink-3); text-align: center; }
 @media (max-width: 1000px) { .device-stage { min-height: 260px; } }
-.dev-btn { font: inherit; font-size: 12.5px; font-weight: 600; padding: 5px 15px; border: 0; border-radius: 999px; background: none; color: var(--ink-3); cursor: pointer; }
+.dev-btn { display: inline-flex; align-items: center; gap: 6px; font: inherit; font-size: 12.5px; font-weight: 600; padding: 5px 15px; border: 0; border-radius: 999px; background: none; color: var(--ink-3); cursor: pointer; }
 .dev-btn.on { background: var(--blue); color: var(--white); }
 
 /* Standalone preview-view page (its own tab: the wizard just links to it). */

@@ -9,7 +9,6 @@ let device = "desktop";
 if (!framable(url)) {
   $("device-page").replaceChildren(Object.assign(document.createElement("p"), { className: "device-size", textContent: "Link de prévia inválido ou expirado." }));
 } else {
-  $("device-open").href = url;
   $("device-iframe").src = url;
 
   function layout() {
