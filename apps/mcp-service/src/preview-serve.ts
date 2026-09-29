@@ -27,6 +27,59 @@ const HEADERS = { "x-robots-tag": "noindex, nofollow, noarchive", "x-content-typ
 /** Base domain of the previews, from the URL template (https://{slug}.waypreview.com.br -> waypreview.com.br). */
 export const previewBaseHost = (template: string) => new URL(template.replace("{slug}", "x")).hostname.replace(/^x\./, "");
 
+// Wayline's own comment on this endpoint: the token in the URL is not a strong secret, it's meant to be
+// pasted into public landing pages. Posting straight from the visitor's browser needs no server-side secret.
+const WAYLINE_FORM_URL = "https://app.wayline.com.br/api/forms/95prNG1qYT2XRHhanpeumnER";
+
+const gatePage = (slug: string) => `<!doctype html>
+<html lang="pt-br"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Prévia do site</title>
+<style>
+  *{box-sizing:border-box}
+  body{margin:0;min-height:100vh;display:flex;align-items:center;justify-content:center;background:#eef4ff;
+    font-family:'Plus Jakarta Sans',Inter,-apple-system,'Segoe UI',sans-serif;padding:24px}
+  .card{max-width:380px;width:100%;background:#fff;border:1px solid #e0e6f7;border-radius:14px;padding:28px 24px;text-align:center}
+  h1{margin:0 0 6px;color:#0b1023;font-size:19px;font-weight:800}
+  p{color:#5b6785;font-size:13px;margin:0 0 20px;line-height:1.5}
+  label{display:block;text-align:left;font-size:12px;font-weight:700;color:#0b1023;margin:14px 0 6px}
+  input{width:100%;padding:11px 12px;border:1px solid #cbd4ea;border-radius:10px;font-size:14px;font-family:inherit}
+  button{width:100%;margin-top:18px;padding:13px;background:#1d66ff;color:#fff;border:none;border-radius:10px;
+    cursor:pointer;font-size:14.5px;font-weight:700;font-family:inherit}
+  button:disabled{opacity:.6;cursor:default}
+  #err{color:#8f1c14;font-size:12.5px;margin-top:10px;display:none}
+</style></head>
+<body>
+  <div class="card">
+    <h1>Quase lá</h1>
+    <p>Informe seu nome e WhatsApp pra ver a prévia do site.</p>
+    <form id="f">
+      <label for="nome">Nome</label>
+      <input id="nome" autocomplete="name" required>
+      <label for="whatsapp">WhatsApp</label>
+      <input id="whatsapp" autocomplete="tel" inputmode="numeric" placeholder="(11) 91234-5678" required>
+      <button type="submit">Ver o site</button>
+      <div id="err">Confira o WhatsApp informado.</div>
+    </form>
+  </div>
+  <script>
+    document.getElementById("whatsapp").addEventListener("input", function (e) {
+      var d = e.target.value.replace(/\\D/g, "").slice(0, 11);
+      e.target.value = d.length <= 10 ? d.replace(/(\\d{2})(\\d{4})(\\d{0,4})/, "($1) $2-$3").trim() : d.replace(/(\\d{2})(\\d{5})(\\d{0,4})/, "($1) $2-$3").trim();
+    });
+    document.getElementById("f").addEventListener("submit", function (e) {
+      e.preventDefault();
+      var nome = document.getElementById("nome").value.trim();
+      var whatsapp = document.getElementById("whatsapp").value.replace(/\\D/g, "");
+      if (nome.length < 2 || whatsapp.length < 10) { document.getElementById("err").style.display = "block"; return; }
+      var btn = e.target.querySelector("button"); btn.disabled = true; btn.textContent = "Enviando...";
+      fetch(${JSON.stringify(WAYLINE_FORM_URL)}, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ nome: nome, whatsapp: whatsapp }) }).catch(function () {});
+      fetch("/__unlock?nome=" + encodeURIComponent(nome) + "&whatsapp=" + encodeURIComponent(whatsapp))
+        .then(function (r) { return r.ok ? location.reload() : Promise.reject(); })
+        .catch(function () { document.getElementById("err").style.display = "block"; btn.disabled = false; btn.textContent = "Ver o site"; });
+    });
+  </script>
+</body></html>`;
+
 const notFound = (reply: FastifyReply) =>
   reply
     .code(404)
@@ -65,14 +118,30 @@ export function registerPreviewHost(app: FastifyInstance, ctx: ToolContext) {
   const base = previewBaseHost(ctx.settings.previewUrlTemplate);
   const slugHost = newSlugRe(base);
   const building = new Map<string, Promise<boolean>>();
-  const known = new Map<string, { until: number; row: { session_id: string; upload_id: string } | null }>(); // 30 s lookup cache
+  type Row = { session_id: string; upload_id: string; unlocked_at: string | null };
+  const known = new Map<string, { until: number; row: Row | null }>(); // 30 s lookup cache
 
   async function lookup(slug: string) {
     const hit = known.get(slug);
     if (hit && hit.until > Date.now()) return hit.row;
-    const [row] = await ctx.db.query<{ session_id: string; upload_id: string }>("SELECT session_id, upload_id FROM previews WHERE slug = $1 AND status = 'active' AND expires_at > now()", [slug]);
+    const [row] = await ctx.db.query<Row>("SELECT session_id, upload_id, unlocked_at FROM previews WHERE slug = $1 AND status = 'active' AND expires_at > now()", [slug]);
     known.set(slug, { until: Date.now() + 30_000, row: row ?? null });
     return row ?? null;
+  }
+
+  /** GET /__unlock?nome=...&whatsapp=... — the first visitor who fills the lead form unlocks this slug for good. */
+  async function unlock(req: FastifyRequest, reply: FastifyReply, slug: string) {
+    const row = await lookup(slug);
+    if (!row) return notFound(reply);
+    const q = new URL(req.url, "http://x").searchParams;
+    const nome = (q.get("nome") ?? "").trim();
+    const whatsapp = (q.get("whatsapp") ?? "").replace(/\D/g, "");
+    if (nome.length < 2 || whatsapp.length < 10 || whatsapp.length > 11) {
+      return reply.code(400).headers({ ...HEADERS, "content-type": "application/json" }).send(JSON.stringify({ error: "dados_invalidos" }));
+    }
+    await ctx.db.query("UPDATE previews SET unlocked_at = now() WHERE slug = $1 AND unlocked_at IS NULL", [slug]);
+    known.delete(slug); // the 30s cache must not keep showing the gate right after a successful unlock
+    return reply.headers({ ...HEADERS, "content-type": "application/json" }).send(JSON.stringify({ ok: true }));
   }
 
   /** Makes sure the folder exists, rebuilding it from the stored package when a redeploy wiped it. */
@@ -101,6 +170,7 @@ export function registerPreviewHost(app: FastifyInstance, ctx: ToolContext) {
     if (req.method !== "GET" && req.method !== "HEAD") return reply.code(405).headers({ ...HEADERS, allow: "GET, HEAD" }).send();
     const row = await lookup(slug);
     if (!row) return notFound(reply);
+    if (!row.unlocked_at) return reply.headers({ ...HEADERS, "content-type": "text/html; charset=utf-8" }).send(gatePage(slug));
     let ready: boolean;
     try {
       ready = await ensureFolder(slug, row);
@@ -137,7 +207,12 @@ export function registerPreviewHost(app: FastifyInstance, ctx: ToolContext) {
     if (host === base) return; // the bare preview domain is the public site (page, /mcp, /llms): normal routing
     if (!host.endsWith(`.${base}`)) return;
     const m = slugHost.exec(host);
-    await (m ? serve(req, reply, m[1]!) : notFound(reply));
+    if (!m) {
+      await notFound(reply);
+      return reply;
+    }
+    const isUnlock = req.method === "GET" && new URL(req.url, "http://x").pathname === "/__unlock";
+    await (isUnlock ? unlock(req, reply, m[1]!) : serve(req, reply, m[1]!));
     return reply;
   });
 }

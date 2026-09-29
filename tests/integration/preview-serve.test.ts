@@ -26,18 +26,66 @@ afterAll(async () => {
 const call = (name: string, args: unknown) => TOOLS.find((t) => t.name === name)!.handler(ctx, args as never);
 const b64 = (s: string | Uint8Array) => Buffer.from(typeof s === "string" ? strToU8(s) : s).toString("base64");
 
-/** Publishes a preview through the real tool and returns its slug. */
+const get = (host: string, url = "/", method: "GET" | "HEAD" | "POST" = "GET") => app.inject({ method, url, headers: { host } });
+const unlock = (host: string, nome = "Teste", whatsapp = "11999999999") => get(host, `/__unlock?nome=${encodeURIComponent(nome)}&whatsapp=${whatsapp}`);
+
+/** Publishes a preview through the real tool, unlocks the lead gate, and returns its slug. */
 async function preview(files: Record<string, string | Uint8Array>) {
   const sessao_id = ((await call("iniciar_sessao", {})).dados as { sessao_id: string }).sessao_id;
   await call("enviar_arquivos", { sessao_id, arquivos: Object.entries(files).map(([caminho, c]) => ({ caminho, conteudo_base64: b64(c) })) });
   const r = await call("criar_previa", { sessao_id });
   expect(r.codigo, JSON.stringify(r)).toBe("PREVIA_CRIADA");
-  return (r.dados as { url: string }).url.match(/^https:\/\/([a-z2-7]{10})\.preview\.test$/)![1]!;
+  const slug = (r.dados as { url: string }).url.match(/^https:\/\/([a-z2-7]{10})\.preview\.test$/)![1]!;
+  expect((await unlock(`${slug}.preview.test`)).statusCode).toBe(200);
+  return slug;
 }
-const get = (host: string, url = "/", method: "GET" | "HEAD" | "POST" = "GET") => app.inject({ method, url, headers: { host } });
 const PNG = new Uint8Array([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a, 0, 255, 128]);
 
+/** Like preview(), but does NOT unlock the lead gate. */
+async function previewLocked(files: Record<string, string | Uint8Array>) {
+  const sessao_id = ((await call("iniciar_sessao", {})).dados as { sessao_id: string }).sessao_id;
+  await call("enviar_arquivos", { sessao_id, arquivos: Object.entries(files).map(([caminho, c]) => ({ caminho, conteudo_base64: b64(c) })) });
+  const r = await call("criar_previa", { sessao_id });
+  return (r.dados as { url: string }).url.match(/^https:\/\/([a-z2-7]{10})\.preview\.test$/)![1]!;
+}
+
 describe("preview host", () => {
+  describe("lead gate (name + WhatsApp before the site is shown)", () => {
+    it("shows the gate, not the site, before anyone unlocks it", async () => {
+      const slug = await previewLocked({ "index.html": "<body>segredo</body>" });
+      const r = await get(`${slug}.preview.test`);
+      expect(r.statusCode).toBe(200);
+      expect(r.body).not.toContain("segredo");
+      expect(r.body).toContain("WhatsApp");
+      expect(r.body).not.toContain("Prévia Way Cloud"); // the normal preview banner only appears once unlocked
+    });
+
+    it("rejects missing or invalid fields and keeps the gate up", async () => {
+      const slug = await previewLocked({ "index.html": "<body>x</body>" });
+      const host = `${slug}.preview.test`;
+      expect((await unlock(host, "", "11999999999")).statusCode).toBe(400); // no name
+      expect((await unlock(host, "Teste", "123")).statusCode).toBe(400); // too short a phone
+      expect((await get(host)).body).toContain("WhatsApp"); // still gated
+    });
+
+    it("unlocks on valid submission, even inside the 30s lookup cache", async () => {
+      const slug = await previewLocked({ "index.html": "<body>liberado</body>" });
+      const host = `${slug}.preview.test`;
+      await get(host); // warms the lookup cache while still locked
+      expect((await unlock(host)).statusCode).toBe(200);
+      const r = await get(host);
+      expect(r.body).toContain("liberado");
+    });
+
+    it("unlocking twice is harmless", async () => {
+      const slug = await previewLocked({ "index.html": "<body>x</body>" });
+      const host = `${slug}.preview.test`;
+      expect((await unlock(host)).statusCode).toBe(200);
+      expect((await unlock(host, "Outra Pessoa", "11888888888")).statusCode).toBe(200);
+      expect((await get(host)).body).toContain("<body>x");
+    });
+  });
+
   it("derives the base domain from the URL template", () => {
     expect(previewBaseHost("https://{slug}.waypreview.com.br")).toBe("waypreview.com.br");
     expect(previewBaseHost("http://{slug}.localhost:13000")).toBe("localhost");

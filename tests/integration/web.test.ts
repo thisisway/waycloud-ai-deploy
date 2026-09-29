@@ -89,7 +89,9 @@ describe("browser flow (flow.js against the real service)", () => {
     const pv = await a.tool("criar_previa", { sessao_id: s1.sessao_id, upload_id: sent.upload_id });
     expect(pv.codigo).toBe("PREVIA_CRIADA");
     const slug = new URL(pv.dados.url).hostname.split(".")[0];
-    const page = await fetch(base + "/", { headers: { "x-preview-host": `${slug}.preview.test` } });
+    const previewHeaders = { "x-preview-host": `${slug}.preview.test` };
+    await fetch(base + "/__unlock?nome=Teste&whatsapp=11999999999", { headers: previewHeaders });
+    const page = await fetch(base + "/", { headers: previewHeaders });
     expect(await page.text()).toContain("do navegador");
   });
 

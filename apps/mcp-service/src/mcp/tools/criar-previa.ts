@@ -8,7 +8,7 @@ import { defineTool } from "./define.js";
 
 export default defineTool(
   "criar_previa",
-  "Use depois de enviar os arquivos (obter_url_upload + PUT do .zip, ou enviar_arquivos) para publicar uma prévia GRÁTIS e temporária de sites estáticos ou SPAs já compiladas, e receber a URL e a data de expiração. Sites PHP não têm prévia. Mostre a URL ao cliente.",
+  "Use depois de enviar os arquivos (obter_url_upload + PUT do .zip, ou enviar_arquivos) para publicar uma prévia GRÁTIS e temporária de sites estáticos ou SPAs já compiladas, e receber a URL e a data de expiração. Sites PHP não têm prévia. Mostre a URL ao cliente: ao abrir, ele vê primeiro uma tela rápida pedindo nome e WhatsApp antes do site aparecer.",
   async (ctx, a) => {
     const session = await findSession(ctx.db, a.sessao_id);
     if (!session) return erro("SESSAO_INVALIDA");
