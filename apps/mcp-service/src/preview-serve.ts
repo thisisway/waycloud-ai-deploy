@@ -72,7 +72,7 @@ const gatePage = (slug: string) => `<!doctype html>
       var whatsapp = document.getElementById("whatsapp").value.replace(/\\D/g, "");
       if (nome.length < 2 || whatsapp.length < 10) { document.getElementById("err").style.display = "block"; return; }
       var btn = e.target.querySelector("button"); btn.disabled = true; btn.textContent = "Enviando...";
-      fetch(${JSON.stringify(WAYLINE_FORM_URL)}, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ nome: nome, whatsapp: whatsapp }) }).catch(function () {});
+      fetch(${JSON.stringify(WAYLINE_FORM_URL)}, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ name: nome, phone: whatsapp }) }).catch(function () {});
       fetch("/__unlock?nome=" + encodeURIComponent(nome) + "&whatsapp=" + encodeURIComponent(whatsapp))
         .then(function (r) { return r.ok ? location.reload() : Promise.reject(); })
         .catch(function () { document.getElementById("err").style.display = "block"; btn.disabled = false; btn.textContent = "Ver o site"; });
