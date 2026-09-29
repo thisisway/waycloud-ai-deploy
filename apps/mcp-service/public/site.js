@@ -1,5 +1,4 @@
 import { Api, brl, checkAddress, checkForm, ensureSession, getPix, maskCep, maskDoc, maskPhone, postJson, sendZip, signup } from "./flow.js";
-import { DEVICES, fitDevice, framable } from "./device.js";
 import { startRibbons } from "./ribbons.js";
 
 const $ = (id) => document.getElementById(id);
@@ -55,7 +54,7 @@ function view(step, ...ids) {
   $("prog-label").textContent = step > 5 ? "Tudo pronto" : `Etapa ${step} de 5 · ${STEP_NAMES[step - 1]}`;
   document.querySelectorAll(".segs i").forEach((bar, i) => bar.classList.toggle("on", i < step));
   $("restart").hidden = !state.sessao_id;
-  syncDevice(ids.includes("s-preview"));
+  document.querySelector(".brand").classList.toggle("has-plans", ids.includes("s-plans"));
 }
 const showAlert = (msg) => {
   $("alert-text").textContent = msg;
@@ -112,65 +111,9 @@ function renderPreview() {
   $("preview-msg").textContent = state.preview_msg ?? "";
   const link = $("preview-link");
   link.hidden = !state.preview_url;
-  if (state.preview_url) {
-    link.href = state.preview_url;
-    link.replaceChildren(document.createTextNode(state.preview_url.replace(/^https?:\/\//, "")), icon("external"));
-  }
+  if (state.preview_url) link.href = `/preview-view.html?url=${encodeURIComponent(state.preview_url)}`;
   $("preview-note").textContent = state.preview_url ? "Fica no ar por 24 horas e não aparece no Google." : "";
 }
-
-// ---- 1b. the preview in phone / tablet / desktop size (right pane) ------------------------------------------------
-let device = "desktop";
-let framed = null; // the address currently loaded in the frame
-
-/** Draws the frame at the size of the chosen device, scaled to fit the pane. */
-function layoutDevice() {
-  if ($("device").hidden) return;
-  const stage = $("device-stage");
-  const availH = Math.max(320, window.innerHeight - 170);
-  const f = fitDevice(device, stage.clientWidth, availH);
-  const frame = $("device-frame");
-  frame.className = `device-frame ${device}`;
-  frame.style.width = `${f.width}px`;
-  frame.style.height = `${f.height}px`;
-  const iframe = $("device-iframe");
-  iframe.style.width = `${f.screenW}px`;
-  iframe.style.height = `${f.screenH}px`;
-  iframe.style.transform = `scale(${f.scale})`;
-  $("device-size").textContent = device === "desktop" ? `Computador · ${f.screenW} px de largura` : `${f.screenW} × ${f.screenH} px`;
-}
-
-/** Shows (or hides) the device view while the preview step is on screen. */
-function syncDevice(previewOn) {
-  const url = state.preview_url;
-  const on = previewOn && !!url && framable(url);
-  $("device").hidden = !on;
-  document.querySelector(".brand").classList.toggle("previewing", on);
-  if (!on) {
-    if (framed) $("device-iframe").src = "about:blank"; // stop the site running in the background
-    framed = null;
-    return;
-  }
-  $("device-open").href = url;
-  if (framed !== url) {
-    $("device-iframe").src = url;
-    framed = url;
-  }
-  layoutDevice();
-}
-
-document.querySelectorAll(".dev-btn").forEach((b) =>
-  b.addEventListener("click", () => {
-    device = b.dataset.device in DEVICES ? b.dataset.device : "desktop";
-    document.querySelectorAll(".dev-btn").forEach((x) => {
-      x.classList.toggle("on", x === b);
-      x.setAttribute("aria-pressed", String(x === b));
-    });
-    layoutDevice();
-  }),
-);
-new ResizeObserver(() => layoutDevice()).observe($("device-stage"));
-window.addEventListener("resize", layoutDevice);
 
 // ---- 2. plans + checkout ------------------------------------------------------------------
 function planCard(p, best) {

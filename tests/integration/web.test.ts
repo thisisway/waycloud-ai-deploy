@@ -32,7 +32,7 @@ afterAll(async () => {
 
 describe("public page", () => {
   it("serves the page and its assets with a strict CSP", async () => {
-    for (const [path, type] of [["/", "text/html"], ["/site.css", "text/css"], ["/site.js", "text/javascript"], ["/flow.js", "text/javascript"], ["/device.js", "text/javascript"], ["/ribbons.js", "text/javascript"], ["/chat.js", "text/javascript"], ["/waycloud-logo.svg", "image/svg+xml"], ["/fonts/plus-jakarta-sans-v12-latin.woff2", "font/woff2"]] as const) {
+    for (const [path, type] of [["/", "text/html"], ["/site.css", "text/css"], ["/site.js", "text/javascript"], ["/flow.js", "text/javascript"], ["/device.js", "text/javascript"], ["/preview-view.html", "text/html"], ["/preview-view.js", "text/javascript"], ["/ribbons.js", "text/javascript"], ["/chat.js", "text/javascript"], ["/waycloud-logo.svg", "image/svg+xml"], ["/fonts/plus-jakarta-sans-v12-latin.woff2", "font/woff2"]] as const) {
       const r = await fetch(base + path);
       expect(r.status, path).toBe(200);
       expect(r.headers.get("content-type"), path).toContain(type);
@@ -44,19 +44,22 @@ describe("public page", () => {
   });
 
   it("is fully self-contained: no inline scripts or styles, no external resources", () => {
-    const html = readFileSync("apps/mcp-service/public/index.html", "utf8");
+    for (const page of ["index.html", "preview-view.html"]) {
+      const html = readFileSync(`apps/mcp-service/public/${page}`, "utf8");
+      expect(html, page).not.toMatch(/<script(?![^>]*\ssrc=)/i); // every script has a src
+      expect(html, page).not.toMatch(/\son[a-z]+\s*=/i); // no inline handlers
+      expect(html, page).not.toMatch(/\sstyle\s*=/i); // no inline styles
+      expect(html, page).not.toMatch(/<style/i); // no inline stylesheets either: everything lives in site.css
+      expect(html, page).not.toMatch(/\ssrc="https?:\/\//i); // no resource is loaded from elsewhere (links to the terms are plain anchors)
+      expect(html, page).not.toMatch(/<link[^>]+href="https?:\/\//i);
+    }
     const css = readFileSync("apps/mcp-service/public/site.css", "utf8");
-    expect(html).not.toMatch(/<script(?![^>]*\ssrc=)/i); // every script has a src
-    expect(html).not.toMatch(/\son[a-z]+\s*=/i); // no inline handlers
-    expect(html).not.toMatch(/\sstyle\s*=/i); // no inline styles
-    expect(html).not.toMatch(/\ssrc="https?:\/\//i); // no resource is loaded from elsewhere (links to the terms are plain anchors)
-    expect(html).not.toMatch(/<link[^>]+href="https?:\/\//i);
     expect(css).not.toMatch(/@import/i);
     expect([...css.matchAll(/url\(([^)]*)\)/g)].every((m) => m[1]!.startsWith('"/fonts/'))).toBe(true); // only the self-hosted font
   });
 
   it("the page code never builds HTML from strings (no innerHTML / eval)", () => {
-    for (const f of ["site.js", "flow.js", "device.js", "ribbons.js", "chat.js"]) expect(readFileSync(`apps/mcp-service/public/${f}`, "utf8"), f).not.toMatch(/innerHTML|outerHTML|insertAdjacentHTML|document\.write|eval\(|new Function/);
+    for (const f of ["site.js", "flow.js", "device.js", "preview-view.js", "ribbons.js", "chat.js"]) expect(readFileSync(`apps/mcp-service/public/${f}`, "utf8"), f).not.toMatch(/innerHTML|outerHTML|insertAdjacentHTML|document\.write|eval\(|new Function/);
   });
 
   it("llms.txt shows the public address (the preview domain), never a leftover placeholder or platform host", async () => {

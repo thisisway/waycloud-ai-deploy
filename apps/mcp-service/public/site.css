@@ -136,9 +136,6 @@ h2 { font-size: 22px; font-weight: 700; letter-spacing: -0.02em; line-height: 1.
 .text-btn.muted { color: var(--ink-3); font-weight: 500; text-decoration: underline; }
 .link-out { display: inline-flex; align-items: center; gap: 6px; font-weight: 700; font-size: 13.5px; color: var(--blue-dark); text-decoration: none; }
 .link-out:hover { text-decoration: underline; }
-.urlrow { display: flex; align-items: center; justify-content: space-between; gap: 12px; text-decoration: none; color: var(--ink); font: 600 15px/1.3 ui-monospace, "SF Mono", Consolas, monospace; border: 1.5px solid var(--line-strong); border-radius: var(--radius); padding: 13px 15px; word-break: break-all; transition: border-color 0.15s, background 0.15s; }
-.urlrow:hover { border-color: var(--blue); background: var(--blue-tint); }
-.urlrow .ic { color: var(--blue); }
 .restart { text-align: center; margin-top: 18px; }
 .restart:has(button[hidden]) { display: none; }
 
@@ -267,18 +264,25 @@ code { flex: 1; min-width: 0; font-family: ui-monospace, "SF Mono", Consolas, mo
 .pair2.city { grid-template-columns: 2fr 1fr; }
 @media (max-width: 420px) { .pair2 { grid-template-columns: 1fr; } .offers li { flex-direction: column; align-items: flex-start; } }
 
-/* Device preview: the right pane shows the free preview at desktop, tablet or phone size (the real site, scaled to fit) */
-.brand.previewing .brand-copy { display: none; }
-.brand.previewing { align-items: stretch; }
-.device { position: relative; width: 100%; display: flex; flex-direction: column; gap: 12px; padding: 24px clamp(16px, 3vw, 40px); min-height: 0; }
-.device-bar { display: flex; align-items: center; justify-content: space-between; gap: 12px; flex-wrap: wrap; }
-.device .seg { background: var(--white); }
+/* Plan picker takes over the right pane once a preview exists; the marketing copy returns the rest of the time. */
+.brand.has-plans .brand-copy { display: none; }
+.brand.has-plans { align-items: stretch; }
+.plans-pane { position: relative; width: 100%; max-width: 480px; margin: 0 auto; display: flex; flex-direction: column; justify-content: center; padding: 24px clamp(16px, 3vw, 40px); min-height: 0; }
+@media (max-width: 1000px) { .plans-pane { padding: 20px 16px; } }
+
+/* Device frame (phone/tablet/desktop chrome): used on the standalone preview-view page. */
 .device-stage { flex: 1; min-height: 320px; display: flex; align-items: flex-start; justify-content: center; }
 .device-frame { position: relative; background: var(--white); border: 1px solid var(--line-strong); border-radius: 10px; overflow: hidden; box-shadow: 0 18px 50px rgba(11, 16, 35, 0.16); }
 .device-frame.tablet { border: 10px solid #1b2238; border-radius: 26px; }
 .device-frame.mobile { border: 9px solid #1b2238; border-radius: 34px; }
 .device-frame iframe { position: absolute; top: 0; left: 0; border: 0; background: var(--white); transform-origin: 0 0; }
 .device-size { font-size: 12.5px; color: var(--ink-3); text-align: center; }
-@media (max-width: 1000px) { .device { padding: 20px 16px; } .device-stage { min-height: 260px; } }
+@media (max-width: 1000px) { .device-stage { min-height: 260px; } }
 .dev-btn { font: inherit; font-size: 12.5px; font-weight: 600; padding: 5px 15px; border: 0; border-radius: 999px; background: none; color: var(--ink-3); cursor: pointer; }
 .dev-btn.on { background: var(--blue); color: var(--white); }
+
+/* Standalone preview-view page (its own tab: the wizard just links to it). */
+body.preview-view { background: var(--blue-tint); min-height: 100vh; }
+.view-bar { display: flex; align-items: center; justify-content: space-between; gap: 12px; flex-wrap: wrap; padding: 14px clamp(16px, 3vw, 40px); background: var(--white); border-bottom: 1px solid var(--line); }
+.view-logo img { height: 24px; display: block; }
+#device-page { padding: 24px clamp(16px, 3vw, 40px) 40px; display: flex; flex-direction: column; gap: 12px; min-height: 0; }

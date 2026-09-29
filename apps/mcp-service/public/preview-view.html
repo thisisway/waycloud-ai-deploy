@@ -1,0 +1,36 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="color-scheme" content="light">
+  <meta name="robots" content="noindex, nofollow">
+  <title>Prévia do site · Way Cloud</title>
+  <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='8' fill='%231D66FF'/%3E%3Cpath d='M9 21a5 5 0 0 1 1-9.9A6 6 0 0 1 21.5 12 4.5 4.5 0 0 1 22 21z' fill='white'/%3E%3C/svg%3E">
+  <link rel="preload" href="/fonts/plus-jakarta-sans-v12-latin.woff2" as="font" type="font/woff2" crossorigin>
+  <link rel="stylesheet" href="/site.css">
+</head>
+<body class="preview-view">
+  <svg class="sprite" aria-hidden="true" focusable="false">
+    <symbol id="i-external" viewBox="0 0 24 24"><path d="M12 6H6a2 2 0 0 0-2 2v10a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2v-6"/><path d="M11 13l9-9"/><path d="M15 4h5v5"/></symbol>
+  </svg>
+  <header class="view-bar">
+    <a class="view-logo" href="https://waycloud.com.br"><img src="/waycloud-logo.svg" alt="Way Cloud"></a>
+    <div class="seg" role="group" aria-label="Tamanho da tela">
+      <button type="button" class="dev-btn on" data-device="desktop" aria-pressed="true">Computador</button>
+      <button type="button" class="dev-btn" data-device="tablet" aria-pressed="false">Tablet</button>
+      <button type="button" class="dev-btn" data-device="mobile" aria-pressed="false">Celular</button>
+    </div>
+    <a id="device-open" class="link-out" target="_blank" rel="noopener noreferrer"><span>Abrir em outra aba</span><svg class="ic"><use href="#i-external"/></svg></a>
+  </header>
+  <div id="device-page">
+    <div id="device-stage" class="device-stage">
+      <div id="device-frame" class="device-frame desktop">
+        <iframe id="device-iframe" title="Prévia do seu site" sandbox="allow-scripts allow-same-origin allow-forms allow-popups" referrerpolicy="no-referrer" loading="lazy"></iframe>
+      </div>
+    </div>
+    <p id="device-size" class="device-size"></p>
+  </div>
+  <script type="module" src="/preview-view.js"></script>
+</body>
+</html>

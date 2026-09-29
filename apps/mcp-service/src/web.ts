@@ -20,6 +20,8 @@ const PAGES: Record<string, { file: string; type: string; immutable?: boolean }>
   "/flow.js": { file: "flow.js", type: "text/javascript; charset=utf-8" },
   "/chat.js": { file: "chat.js", type: "text/javascript; charset=utf-8" },
   "/device.js": { file: "device.js", type: "text/javascript; charset=utf-8" },
+  "/preview-view.html": { file: "preview-view.html", type: "text/html; charset=utf-8" },
+  "/preview-view.js": { file: "preview-view.js", type: "text/javascript; charset=utf-8" },
   "/ribbons.js": { file: "ribbons.js", type: "text/javascript; charset=utf-8" },
   "/waycloud-logo.svg": { file: "waycloud-logo.svg", type: "image/svg+xml" },
   "/fonts/plus-jakarta-sans-v12-latin.woff2": { file: "fonts/plus-jakarta-sans-v12-latin.woff2", type: "font/woff2", immutable: true }, // self-hosted: no request to Google
