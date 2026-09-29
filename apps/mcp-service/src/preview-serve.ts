@@ -29,7 +29,7 @@ export const previewBaseHost = (template: string) => new URL(template.replace("{
 
 // Wayline's own comment on this endpoint: the token in the URL is not a strong secret, it's meant to be
 // pasted into public landing pages. Posting straight from the visitor's browser needs no server-side secret.
-const WAYLINE_FORM_URL = "https://app.wayline.com.br/api/forms/95prNG1qYT2XRHhanpeumnER";
+const WAYLINE_FORM_URL = "https://app.wayline.com.br/api/forms/t3YvyJK_eVPTbOjyhTbkpjgW";
 
 const gatePage = (slug: string) => `<!doctype html>
 <html lang="pt-br"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
