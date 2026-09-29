@@ -54,7 +54,7 @@ function view(step, ...ids) {
   $("prog-label").textContent = step > 5 ? "Tudo pronto" : `Etapa ${step} de 5 · ${STEP_NAMES[step - 1]}`;
   document.querySelectorAll(".segs i").forEach((bar, i) => bar.classList.toggle("on", i < step));
   $("restart").hidden = !state.sessao_id;
-  document.querySelector(".brand").classList.toggle("has-plans", ids.includes("s-plans"));
+  document.querySelector(".brand").classList.toggle("step1", ids.includes("s-upload"));
 }
 const showAlert = (msg) => {
   $("alert-text").textContent = msg;
@@ -154,8 +154,7 @@ async function showPlans() {
   // The plan made for this kind of project (not a generic one) is the recommendation.
   const bestPid = list.find((p) => p.tipos.length)?.pid;
   $("plans").replaceChildren(...list.map((p) => planCard(p, p.pid === bestPid)));
-  view(3, "s-preview", "s-plans");
-  // The stepper marks "Prévia" as done once the visitor is choosing a plan.
+  view(2, "s-preview", "s-plans"); // "Prévia": the visitor is looking at the site and picking a plan, not yet "Contratar"
 }
 
 // ---- 2b. sign-up (the customer's data goes to /web/checkout; nothing personal is kept in the browser) -----------------
@@ -739,7 +738,7 @@ $("domain-cancel").addEventListener("click", async () => {
   pane("dp-enter");
   $("f-dominio").focus();
 });
-$("change-plan").addEventListener("click", () => (clearAlert(), view(3, "s-preview", "s-plans")));
+$("change-plan").addEventListener("click", () => (clearAlert(), view(2, "s-preview", "s-plans")));
 $("f-tel").addEventListener("input", (e) => (e.target.value = maskPhone(e.target.value)));
 const docInput = () => {
   const cnpj = $("f-tipo").value === "CNPJ";

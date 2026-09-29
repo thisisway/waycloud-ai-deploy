@@ -264,11 +264,13 @@ code { flex: 1; min-width: 0; font-family: ui-monospace, "SF Mono", Consolas, mo
 .pair2.city { grid-template-columns: 2fr 1fr; }
 @media (max-width: 420px) { .pair2 { grid-template-columns: 1fr; } .offers li { flex-direction: column; align-items: flex-start; } }
 
-/* Plan picker takes over the right pane once a preview exists; the marketing copy returns the rest of the time. */
-.brand.has-plans .brand-copy { display: none; }
-.brand.has-plans { align-items: stretch; }
-.plans-pane { position: relative; width: 100%; max-width: 480px; margin: 0 auto; display: flex; flex-direction: column; justify-content: center; padding: 24px clamp(16px, 3vw, 40px); min-height: 0; }
-@media (max-width: 1000px) { .plans-pane { padding: 20px 16px; } }
+/* Right pane: the "use with your AI" copy only makes sense on step 1 (that's where you'd copy it out
+   to hand to the AI); the plan picker and the customer's own data take that space on steps 2 and 3. */
+.brand-copy { display: none; }
+.brand.step1 .brand-copy { display: block; }
+.brand:not(.step1) { align-items: stretch; } /* the side panel fills the pane's height instead of centering a short block */
+.side-panel { position: relative; width: 100%; max-width: 480px; margin: 0 auto; display: flex; flex-direction: column; justify-content: center; padding: 24px clamp(16px, 3vw, 40px); min-height: 0; }
+@media (max-width: 1000px) { .side-panel { padding: 20px 16px; } }
 
 /* Device frame (phone/tablet/desktop chrome): used on the standalone preview-view page. */
 .device-stage { flex: 1; min-height: 320px; display: flex; align-items: flex-start; justify-content: center; }
