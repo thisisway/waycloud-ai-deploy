@@ -47,12 +47,19 @@ const gatePage = (slug: string) => `<!doctype html>
     cursor:pointer;font-size:14.5px;font-weight:700;font-family:inherit}
   button:disabled{opacity:.6;cursor:default}
   #err{color:#8f1c14;font-size:12.5px;margin-top:10px;display:none}
+  #ok{display:none;flex-direction:column;align-items:center}
+  #ok svg{margin-bottom:12px}
+  #ok h1{color:#0e7a42}
+  .ok-circle{stroke-dasharray:190;stroke-dashoffset:190;animation:ok-circle .5s ease-out forwards}
+  .ok-check{stroke-dasharray:34;stroke-dashoffset:34;animation:ok-check .35s .45s ease-out forwards}
+  @keyframes ok-circle{to{stroke-dashoffset:0}}
+  @keyframes ok-check{to{stroke-dashoffset:0}}
 </style></head>
 <body>
   <div class="card">
-    <h1>Quase lá</h1>
-    <p>Informe seu nome e WhatsApp pra ver a prévia do site.</p>
     <form id="f">
+      <h1>Quase lá</h1>
+      <p>Informe seu nome e WhatsApp pra ver a prévia do site.</p>
       <label for="nome">Nome</label>
       <input id="nome" autocomplete="name" required>
       <label for="whatsapp">WhatsApp</label>
@@ -60,6 +67,14 @@ const gatePage = (slug: string) => `<!doctype html>
       <button type="submit">Ver o site</button>
       <div id="err">Confira o WhatsApp informado.</div>
     </form>
+    <div id="ok">
+      <svg width="60" height="60" viewBox="0 0 64 64" aria-hidden="true">
+        <circle class="ok-circle" cx="32" cy="32" r="28" fill="none" stroke="#0e7a42" stroke-width="4"/>
+        <path class="ok-check" d="M19 33l9 9 20-20" fill="none" stroke="#0e7a42" stroke-width="4" stroke-linecap="round" stroke-linejoin="round"/>
+      </svg>
+      <h1>Liberado!</h1>
+      <p>Carregando o site...</p>
+    </div>
   </div>
   <script>
     document.getElementById("whatsapp").addEventListener("input", function (e) {
@@ -74,7 +89,12 @@ const gatePage = (slug: string) => `<!doctype html>
       var btn = e.target.querySelector("button"); btn.disabled = true; btn.textContent = "Enviando...";
       fetch(${JSON.stringify(WAYLINE_FORM_URL)}, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ name: nome, phone: whatsapp }) }).catch(function () {});
       fetch("/__unlock?nome=" + encodeURIComponent(nome) + "&whatsapp=" + encodeURIComponent(whatsapp))
-        .then(function (r) { return r.ok ? location.reload() : Promise.reject(); })
+        .then(function (r) {
+          if (!r.ok) return Promise.reject();
+          document.getElementById("f").style.display = "none";
+          document.getElementById("ok").style.display = "flex";
+          setTimeout(function () { location.reload(); }, 1200);
+        })
         .catch(function () { document.getElementById("err").style.display = "block"; btn.disabled = false; btn.textContent = "Ver o site"; });
     });
   </script>
