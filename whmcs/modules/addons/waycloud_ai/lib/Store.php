@@ -8,7 +8,8 @@ namespace WayCloud\Ai;
  * and an in-memory one for the tests. Timestamps are unix seconds.
  *
  * Checkout statuses: new -> client_created -> ordering -> ordered -> paid -> active | failed
- *                    (also: expired, cancelled)
+ *                    (also: expired, cancelled, and transiently charging between ordered and paid
+ *                    while a credit card charge is in flight)
  */
 interface Store
 {

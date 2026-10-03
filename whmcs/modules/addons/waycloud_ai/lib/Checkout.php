@@ -85,6 +85,65 @@ final class Checkout
     }
 
     /**
+     * Cobra um cartão já tokenizado no navegador (nunca vemos o número) contra a fatura do checkout. O valor
+     * cobrado vem sempre da fatura real (nunca do cliente); um compare-and-set no status do checkout ('ordered'
+     * -> 'charging') serializa tentativas concorrentes (duplo clique, duas abas) sem precisar de tabela nova.
+     * @param array<string,mixed> $req checkout_id, session_id, token, months
+     * @return array{ok:bool, message:?string}
+     */
+    public function cardCharge(array $req): array
+    {
+        $id = filter_var($req['checkout_id'] ?? null, FILTER_VALIDATE_INT);
+        $row = $id === false || $id <= 0 ? null : $this->store->findCheckoutBy('id', $id);
+        if ($row === null || !hash_equals((string) $row['session_id'], (string) ($req['session_id'] ?? '')) || (int) ($row['invoice_id'] ?? 0) <= 0) {
+            throw new ApiException('unknown_checkout', 404);
+        }
+        $token = trim((string) ($req['token'] ?? ''));
+        if ($token === '') {
+            throw new ApiException('invalid_token');
+        }
+        $max = max(1, (int) $this->settings->get('card_max_installments'));
+        $months = max(1, min($max, (int) ($req['months'] ?? 1)));
+        $invoiceId = (int) $row['invoice_id'];
+        $checkoutId = (int) $row['id'];
+
+        if (!$this->store->updateCheckout($checkoutId, ['status' => 'charging'], ['ordered'])) {
+            return ['ok' => false, 'message' => 'Esta fatura já está sendo processada ou já foi paga. Atualize a página.'];
+        }
+
+        $invoice = $this->whmcs->invoiceForCharge($invoiceId);
+        if ($invoice === null || $invoice['status'] !== 'Unpaid') {
+            $this->store->updateCheckout($checkoutId, ['status' => 'ordered'], ['charging']);
+            return ['ok' => false, 'message' => 'Esta fatura já foi paga ou não está mais disponível.'];
+        }
+        if (intdiv($invoice['total_cents'], $months) < 500) { // mínimo de R$5,00 por parcela na Iugu
+            $this->store->updateCheckout($checkoutId, ['status' => 'ordered'], ['charging']);
+            return ['ok' => false, 'message' => 'Esse parcelamento deixaria a parcela abaixo do mínimo. Escolha menos parcelas.'];
+        }
+
+        try {
+            $result = $this->whmcs->chargeCard($invoiceId, $invoice['email'], $invoice['total_cents'], $token, $months);
+        } catch (\Throwable $e) {
+            $this->store->updateCheckout($checkoutId, ['status' => 'ordered'], ['charging']);
+            $this->alert('Checkout AI: falha ao cobrar cartão (fatura ' . $invoiceId . ')', $e->getMessage());
+            return ['ok' => false, 'message' => 'Não foi possível processar o cartão agora. Tente de novo ou pague com Pix.'];
+        }
+
+        if (!$result['approved']) {
+            $this->store->updateCheckout($checkoutId, ['status' => 'ordered'], ['charging']);
+            $this->store->logEvent('card_charge.declined', (string) $checkoutId, ['invoice_id' => $invoiceId, 'reason' => $result['error_message']], ($this->now)());
+            return ['ok' => false, 'message' => 'Cartão recusado. Confira os dados, tente outro cartão ou pague com Pix.'];
+        }
+
+        // O hook InvoicePaid não vai mais achar o status 'ordered' (já virou 'charging'/'paid' aqui), então a
+        // transição e a notificação ao MCP são feitas diretamente -- mesmo efeito de onInvoicePaid().
+        $this->store->updateCheckout($checkoutId, ['status' => 'paid'], ['charging']);
+        $this->store->logEvent('card_charge.approved', (string) $checkoutId, ['invoice_id' => $invoiceId], ($this->now)());
+        $this->notifier->queue('order.paid', $this->payload($row) + ['whmcs_invoice_id' => $invoiceId]);
+        return ['ok' => true, 'message' => null];
+    }
+
+    /**
      * The customer connected their own domain and the site now lives on it: WHMCS must follow, or its Plesk module
      * (suspend, terminate...) would look for the old name. Only services that came from an AI checkout can be touched.
      * @param array<string,mixed> $req service_id, domain
@@ -323,7 +382,7 @@ final class Checkout
         if ($status === 'expired') {
             return 'expired';
         }
-        if (in_array($status, ['ordering', 'ordered', 'paid', 'active', 'failed'], true)) {
+        if (in_array($status, ['ordering', 'ordered', 'charging', 'paid', 'active', 'failed'], true)) {
             return 'used';
         }
         if ((int) $row['expires_at'] < ($this->now)()) {

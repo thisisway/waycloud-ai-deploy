@@ -33,8 +33,11 @@ export function previewFrameSource(previewUrlTemplate: string): string {
   const host = new URL(previewUrlTemplate.replace("{slug}", "x")).host;
   return `https://${host.replace(/^x./, "*.")}`;
 }
+// The card tab tokenizes directly with Iugu from the browser (api.iugu.com): the card number must never
+// reach our own server, so connect-src has to allow that one external host.
+const IUGU_API = "https://api.iugu.com";
 const headersFor = (previewFrame: string) => ({
-  "content-security-policy": `default-src 'none'; script-src 'self' ${CHAT}; style-src 'self' 'unsafe-inline'; font-src 'self' ${CHAT} data:; connect-src 'self' ${CHAT} wss://chatwoot.waycloud.com.br; img-src 'self' data: ${CHAT}; media-src ${CHAT}; frame-src ${CHAT} ${previewFrame}; base-uri 'none'; form-action 'none'; frame-ancestors 'none'`,
+  "content-security-policy": `default-src 'none'; script-src 'self' ${CHAT}; style-src 'self' 'unsafe-inline'; font-src 'self' ${CHAT} data:; connect-src 'self' ${CHAT} ${IUGU_API} wss://chatwoot.waycloud.com.br; img-src 'self' data: ${CHAT}; media-src ${CHAT}; frame-src ${CHAT} ${previewFrame}; base-uri 'none'; form-action 'none'; frame-ancestors 'none'`,
   "x-content-type-options": "nosniff",
   "referrer-policy": "no-referrer",
   "cache-control": "no-cache",
@@ -90,6 +93,7 @@ export function registerWeb(app: FastifyInstance, ctx: ToolContext) {
   const perSession = new RateLimit(10 * 60_000);
   const overall = new RateLimit(60 * 60_000);
   const pixPerSession = new RateLimit(10 * 60_000);
+  const cardPerSession = new RateLimit(10 * 60_000);
   for (const [path, { file, type, immutable }] of Object.entries(PAGES)) {
     let body: Buffer;
     try {
@@ -99,6 +103,10 @@ export function registerWeb(app: FastifyInstance, ctx: ToolContext) {
     }
     app.get(path, async (_req, reply) => reply.headers({ ...HEADERS, ...(immutable && { "cache-control": "public, max-age=31536000, immutable" }), "content-type": type }).send(body));
   }
+
+  // Public Iugu account id only (never the secret API key): same-origin, so the strict script-src CSP above
+  // (no 'unsafe-inline') does not need weakening just to hand the browser this one public value.
+  app.get("/web/config", async (_req, reply) => reply.headers({ ...HEADERS, "content-type": "application/json" }).send({ iugu_account_id: ctx.settings.iuguAccountId ?? null }));
 
   void app.register(async (scope) => {
     scope.addContentTypeParser(["application/zip", "application/octet-stream"], { parseAs: "buffer", bodyLimit: MAX_WEB_ZIP_BYTES }, (_req, body, done) => done(null, body));
@@ -292,6 +300,28 @@ export function registerWeb(app: FastifyInstance, ctx: ToolContext) {
       return send(200, { ok: true, ...pixBody(pix) });
     } catch {
       return send(200, { ok: false }); // the page falls back to the invoice link
+    }
+  });
+
+  // Charges a card already tokenized in the browser (Iugu token, never the card number) against the session's
+  // last checkout. Same ownership rule as /web/pix: only the session that signed up can charge its own invoice.
+  const cardBody = z.object({ sessao_id: sessaoId, token: z.string().min(1).max(200), months: z.number().int().min(1).max(24) }).strict();
+  app.post("/web/card", { bodyLimit: 2 * 1024 }, async (req, reply) => {
+    const send = (status: number, body: object) => reply.code(status).header("cache-control", "no-store").send(body);
+    const b = cardBody.safeParse(req.body);
+    if (!b.success) return send(400, erro("ENTRADA_INVALIDA"));
+    if (cardPerSession.tooMany(b.data.sessao_id, 10)) return send(429, erro("LIMITE_EXCEDIDO"));
+    const session = await findSession(ctx.db, b.data.sessao_id);
+    if (!session) return send(401, erro("SESSAO_INVALIDA"));
+    if (!ctx.addon) return send(200, { ok: false, message: "Pagamento por cartão indisponível no momento. Tente com Pix." });
+    const ref = await ctx.db.query<{ checkout_id: string }>("SELECT checkout_id FROM checkout_refs WHERE session_id = $1 ORDER BY created_at DESC LIMIT 1", [session.id]);
+    const checkoutId = Number(ref[0]?.checkout_id);
+    if (!Number.isInteger(checkoutId)) return send(200, { ok: false, message: "Não encontramos seu pedido. Atualize a página e tente de novo." });
+    try {
+      const r = await ctx.addon.cardCharge({ sessionId: session.id, checkoutId, token: b.data.token, months: b.data.months });
+      return send(200, r);
+    } catch {
+      return send(200, { ok: false, message: "Não foi possível processar o cartão agora. Tente de novo ou pague com Pix." });
     }
   });
 

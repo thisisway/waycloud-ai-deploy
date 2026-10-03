@@ -620,6 +620,82 @@ test('API action pix_charge gives the Pix only to the session that made the chec
     eq([200, ['ok' => false]], $call($e, ['action' => 'pix_charge', 'checkout_id' => 1, 'session_id' => SESSION]));
 });
 
+test('API action card_charge approves, bills the real invoice total and marks the checkout paid', function () use ($call, $web, $validWeb, $events) {
+    $e = make();
+    $e['checkout']->registerFromWeb($web($validWeb));
+    $e['whmcs']->invoices[1500] = ['status' => 'Unpaid', 'total_cents' => 3590, 'email' => 'maria@example.com'];
+    [$st, $r] = $call($e, ['action' => 'card_charge', 'checkout_id' => 1, 'session_id' => SESSION, 'token' => 'tok_abc', 'months' => 2]);
+    eq([200, true, null], [$st, $r['ok'], $r['message']]);
+    eq([[1500, 'maria@example.com', 3590, 'tok_abc', 2]], $e['whmcs']->chargeCalls);
+    eq('paid', $e['store']->checkouts[1]['status']);
+    eq(['order.created', 'order.paid'], $events($e));
+    yes($e['store']->hasEvent('card_charge.approved', '1'), 'logged for support');
+});
+
+test('API action card_charge refuses another session, an unknown checkout and an empty token', function () use ($call, $web, $validWeb) {
+    $e = make();
+    $e['checkout']->registerFromWeb($web($validWeb));
+    $e['whmcs']->invoices[1500] = ['status' => 'Unpaid', 'total_cents' => 3590, 'email' => 'maria@example.com'];
+    eq([404, ['error' => 'unknown_checkout']], $call($e, ['action' => 'card_charge', 'checkout_id' => 1, 'session_id' => '11111111-1111-4111-8111-111111111111', 'token' => 'tok']));
+    eq([404, ['error' => 'unknown_checkout']], $call($e, ['action' => 'card_charge', 'checkout_id' => 99, 'session_id' => SESSION, 'token' => 'tok']));
+    eq([422, ['error' => 'invalid_token']], $call($e, ['action' => 'card_charge', 'checkout_id' => 1, 'session_id' => SESSION, 'token' => '']));
+    eq(0, count($e['whmcs']->chargeCalls), 'never reached the gateway');
+});
+
+test('API action card_charge: a declined card reverts the checkout so the customer can retry', function () use ($call, $web, $validWeb) {
+    $e = make();
+    $e['checkout']->registerFromWeb($web($validWeb));
+    $e['whmcs']->invoices[1500] = ['status' => 'Unpaid', 'total_cents' => 3590, 'email' => 'maria@example.com'];
+    $e['whmcs']->chargeResult = ['approved' => false, 'error_message' => 'cartão recusado pelo emissor'];
+    [$st, $r] = $call($e, ['action' => 'card_charge', 'checkout_id' => 1, 'session_id' => SESSION, 'token' => 'tok_abc', 'months' => 1]);
+    eq(200, $st);
+    eq(false, $r['ok']);
+    yes(!str_contains((string) $r['message'], 'emissor'), 'never echoes the raw gateway reason to the customer');
+    eq('ordered', $e['store']->checkouts[1]['status'], 'reverted, not stuck');
+    yes($e['store']->hasEvent('card_charge.declined', '1'), 'logged for support');
+});
+
+test('API action card_charge: an already-paid invoice is never charged twice', function () use ($call, $web, $validWeb) {
+    $e = make();
+    $e['checkout']->registerFromWeb($web($validWeb));
+    $e['whmcs']->invoices[1500] = ['status' => 'Paid', 'total_cents' => 3590, 'email' => 'maria@example.com'];
+    [, $r] = $call($e, ['action' => 'card_charge', 'checkout_id' => 1, 'session_id' => SESSION, 'token' => 'tok_abc', 'months' => 1]);
+    eq(false, $r['ok']);
+    eq(0, count($e['whmcs']->chargeCalls));
+    eq('ordered', $e['store']->checkouts[1]['status'], 'reverted, not stuck in charging');
+});
+
+test('API action card_charge: a concurrent attempt on the same checkout is refused, not double-charged', function () use ($call, $web, $validWeb) {
+    $e = make();
+    $e['checkout']->registerFromWeb($web($validWeb));
+    $e['whmcs']->invoices[1500] = ['status' => 'Unpaid', 'total_cents' => 3590, 'email' => 'maria@example.com'];
+    $e['store']->checkouts[1]['status'] = 'charging'; // simulates another request already in flight
+    [, $r] = $call($e, ['action' => 'card_charge', 'checkout_id' => 1, 'session_id' => SESSION, 'token' => 'tok_abc', 'months' => 1]);
+    eq(false, $r['ok']);
+    eq(0, count($e['whmcs']->chargeCalls));
+});
+
+test('API action card_charge: too many installments for the amount is refused before calling the gateway', function () use ($call, $web, $validWeb) {
+    $e = make();
+    $e['checkout']->registerFromWeb($web($validWeb));
+    $e['whmcs']->invoices[1500] = ['status' => 'Unpaid', 'total_cents' => 1000, 'email' => 'maria@example.com']; // R$10, min R$5/parcela
+    [, $r] = $call($e, ['action' => 'card_charge', 'checkout_id' => 1, 'session_id' => SESSION, 'token' => 'tok_abc', 'months' => 12]);
+    eq(false, $r['ok']);
+    eq(0, count($e['whmcs']->chargeCalls));
+    eq('ordered', $e['store']->checkouts[1]['status']);
+});
+
+test('API action card_charge: a gateway exception reverts the checkout and alerts the admin', function () use ($call, $web, $validWeb) {
+    $e = make();
+    $e['checkout']->registerFromWeb($web($validWeb));
+    $e['whmcs']->invoices[1500] = ['status' => 'Unpaid', 'total_cents' => 3590, 'email' => 'maria@example.com'];
+    $e['whmcs']->failCharge = 'Iugu timeout';
+    [, $r] = $call($e, ['action' => 'card_charge', 'checkout_id' => 1, 'session_id' => SESSION, 'token' => 'tok_abc', 'months' => 1]);
+    eq(false, $r['ok']);
+    eq('ordered', $e['store']->checkouts[1]['status']);
+    eq(1, count($e['whmcs']->alerts));
+});
+
 echo "\nDomain sales\n";
 $addr = ['cep' => '01310-100', 'logradouro' => 'Avenida Paulista', 'numero' => '1000', 'complemento' => '', 'bairro' => 'Bela Vista', 'cidade' => 'São Paulo', 'uf' => 'SP'];
 $buy = static function () use ($web, $validWeb): array {

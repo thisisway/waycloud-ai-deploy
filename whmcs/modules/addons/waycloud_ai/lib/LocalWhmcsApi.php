@@ -125,6 +125,57 @@ final class LocalWhmcsApi implements WhmcsApi
         return ['copy_paste' => (string) $c->copy_paste, 'qr_image' => (string) $c->qr_image, 'amount_cents' => (int) round(((float) $c->amount) * 100), 'expires_at' => (string) $c->expires_at];
     }
 
+    public function invoiceForCharge(int $invoiceId): ?array
+    {
+        $inv = Capsule::table('tblinvoices')->where('id', $invoiceId)->first(['status', 'total', 'userid']);
+        if ($inv === null) {
+            return null;
+        }
+        $email = (string) Capsule::table('tblclients')->where('id', (int) $inv->userid)->value('email');
+        return ['status' => (string) $inv->status, 'total_cents' => (int) round(((float) $inv->total) * 100), 'email' => $email];
+    }
+
+    public function chargeCard(int $invoiceId, string $email, int $totalCents, string $token, int $months): array
+    {
+        $apiToken = $this->settings->get('iugu_api_token');
+        if ($apiToken === '') {
+            return ['approved' => false, 'error_message' => 'Iugu API token não configurado.'];
+        }
+        [$status, $body] = Http::postJson('https://api.iugu.com/v1/charge?api_token=' . urlencode($apiToken), [
+            'token' => $token,
+            'email' => $email,
+            'months' => max(1, $months),
+            'items' => [[
+                'description' => 'Fatura #' . $invoiceId . ' - Way Cloud',
+                'quantity' => 1,
+                'price_cents' => $totalCents,
+            ]],
+        ]);
+        $data = json_decode($body, true);
+        if ($status !== 200 || !is_array($data)) {
+            return ['approved' => false, 'error_message' => 'Falha de comunicação com a Iugu (HTTP ' . $status . ').'];
+        }
+        $approved = ($data['success'] ?? false) === true && ($data['status'] ?? '') === 'captured';
+        if (!$approved) {
+            $msg = (string) ($data['info_message'] ?? (is_string($data['errors'] ?? null) ? $data['errors'] : (string) ($data['message'] ?? 'Cobrança não aprovada.')));
+            return ['approved' => false, 'error_message' => $msg];
+        }
+        $providerReference = (string) ($data['invoice_id'] ?? $token);
+        try {
+            $this->call('UpdateInvoice', ['invoiceid' => $invoiceId, 'paymentmethod' => 'iugucartao']);
+        } catch (WhmcsApiError) {
+            // Não impede a baixa do pagamento -- só deixa o campo "forma de pagamento" do WHMCS desatualizado.
+        }
+        $this->call('AddInvoicePayment', [
+            'invoiceid' => $invoiceId,
+            'transid' => $providerReference,
+            'gateway' => 'iugucartao',
+            'amount' => round($totalCents / 100, 2),
+            'noemail' => true,
+        ]);
+        return ['approved' => true, 'error_message' => null];
+    }
+
     public function domainAvailable(string $domain): ?bool
     {
         try {

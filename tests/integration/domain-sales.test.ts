@@ -40,6 +40,7 @@ beforeAll(async () => {
     registerCheckout: unused,
     updateServiceDomain: async () => {},
     pixCharge: async () => null,
+    cardCharge: unused,
     domainSearch: async (names) => names.map((d) => ({ domain: d, available: !d.startsWith("ocupado"), priceCents: d.endsWith(".com.br") ? 5000 : 7900 })),
     domainOrder: async (r) => {
       seen.orders.push(r);

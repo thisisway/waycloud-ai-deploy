@@ -31,6 +31,7 @@ beforeAll(async () => {
     updateServiceDomain: async () => {},
     ...unusedDomainSales,
     pixCharge: async () => null,
+    cardCharge: async () => ({ ok: false, message: null }),
   };
   ctx = { ...t.ctx, addon };
 });

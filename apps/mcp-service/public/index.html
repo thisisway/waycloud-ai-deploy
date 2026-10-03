@@ -80,6 +80,12 @@
         <section id="s-wait" class="block" hidden>
           <h2 id="wait-title">Aguardando o pagamento</h2>
           <p id="wait-msg" class="sub">Se você ainda não pagou, siga para o pagamento (Pix ou cartão). Depois é só voltar a esta página: a publicação começa sozinha assim que for confirmado.</p>
+
+          <div id="pay-tabs" class="seg" role="group" aria-label="Forma de pagamento" hidden>
+            <button type="button" class="pay-btn on" data-pay="pix" aria-pressed="true">Pix</button>
+            <button type="button" class="pay-btn" data-pay="card" aria-pressed="false">Cartão de crédito</button>
+          </div>
+
           <div id="pix" class="pix" hidden>
             <img id="pix-qr" class="pix-qr" alt="QR Code do Pix" width="180" height="180">
             <div class="pix-side">
@@ -91,6 +97,40 @@
               </div>
             </div>
           </div>
+
+          <form id="card-form" class="card-pay" hidden novalidate>
+            <p class="pix-amount">Valor: <strong id="card-amount"></strong></p>
+            <div class="field">
+              <label for="c-numero">Número do cartão</label>
+              <input id="c-numero" type="text" inputmode="numeric" autocomplete="cc-number" maxlength="19" placeholder="0000 0000 0000 0000" aria-describedby="e-c-numero" required>
+              <p id="e-c-numero" class="err" hidden></p>
+            </div>
+            <div class="field">
+              <label for="c-nome">Nome impresso no cartão</label>
+              <input id="c-nome" type="text" autocomplete="cc-name" maxlength="60" aria-describedby="e-c-nome" required>
+              <p id="e-c-nome" class="err" hidden></p>
+            </div>
+            <div class="pair2">
+              <div class="field">
+                <label for="c-validade">Validade</label>
+                <input id="c-validade" type="text" inputmode="numeric" autocomplete="cc-exp" maxlength="5" placeholder="MM/AA" aria-describedby="e-c-validade" required>
+                <p id="e-c-validade" class="err" hidden></p>
+              </div>
+              <div class="field">
+                <label for="c-cvv">Código de segurança</label>
+                <input id="c-cvv" type="text" inputmode="numeric" autocomplete="cc-csc" maxlength="4" placeholder="123" aria-describedby="e-c-cvv" required>
+                <p id="e-c-cvv" class="err" hidden></p>
+              </div>
+            </div>
+            <div class="field">
+              <label for="c-parcelas">Parcelamento</label>
+              <select id="c-parcelas"></select>
+            </div>
+            <p id="e-card-form" class="err" hidden></p>
+            <button id="card-submit" type="submit" class="btn wide">Finalizar pedido</button>
+            <p class="note soft"><svg class="ic sm"><use href="#i-lock"/></svg>Os dados do cartão vão direto para o processador de pagamento. A Way Cloud não vê nem guarda o número do seu cartão.</p>
+          </form>
+
           <div class="bar-load" aria-hidden="true"><span></span></div>
           <p><a id="checkout-link" class="btn line">Ir para o pagamento</a></p>
         </section>

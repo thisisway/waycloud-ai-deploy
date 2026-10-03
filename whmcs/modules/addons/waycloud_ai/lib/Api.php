@@ -63,6 +63,8 @@ final class Api
                     return [200, $this->checkout->registerFromWeb($data)];
                 case 'pix_charge':
                     return [200, $this->checkout->pixCharge($data)];
+                case 'card_charge':
+                    return [200, $this->checkout->cardCharge($data)];
                 case 'domain_search':
                     return [200, $this->checkout->domains()->search($data)];
                 case 'domain_order':

@@ -51,6 +51,12 @@ export interface PixCharge {
   expiresAt: string;
 }
 
+export interface CardChargeResult {
+  ok: boolean;
+  /** Fixed pt-BR text written by the addon when ok is false (never the raw gateway reason). */
+  message: string | null;
+}
+
 export interface DomainOffer {
   domain: string;
   /** null: the lookup could not tell */
@@ -85,6 +91,8 @@ export interface AddonClient {
   registerCheckout(req: { sessionId: string; pid: number; cycle: "monthly" | "annually"; form: SignupForm }): Promise<SignupResult>;
   /** The Pix of the checkout's invoice (only for the session that made it); null when there is none to show. */
   pixCharge(req: { sessionId: string; checkoutId: number }): Promise<PixCharge | null>;
+  /** Charges a card already tokenized in the browser (we never see the card number) against the checkout's invoice. */
+  cardCharge(req: { sessionId: string; checkoutId: number; token: string; months: number }): Promise<CardChargeResult>;
   domainSearch(domains: string[]): Promise<DomainOffer[]>;
   domainOrder(req: { sessionId: string; checkoutId: number; domain: string; address: Address }): Promise<DomainOrderResult>;
   domainOrderStatus(req: { sessionId: string; checkoutId: number; orderId: number }): Promise<{ status: DomainOrderStatus; domain: string | null }>;
@@ -103,6 +111,7 @@ const signupResponse = z.object({
   fallback_url: z.string().url().nullable(),
 });
 const pixResponse = z.object({ ok: z.boolean(), copy_paste: z.string().optional(), qr_image: z.string().optional(), amount_cents: z.number().int().optional(), expires_at: z.string().optional() });
+const cardChargeResponse = z.object({ ok: z.boolean(), message: z.string().nullable() });
 const domainSearchResponse = z.object({ results: z.array(z.object({ domain: z.string(), available: z.boolean().nullable(), price_cents: z.number().int() })) });
 const domainOrderResponse = z.object({
   ok: z.boolean(),
@@ -181,6 +190,12 @@ export function httpAddonClient(cfg: AddonConfig): AddonClient {
       const d = parsed.data;
       if (!d.ok || !d.copy_paste || d.amount_cents === undefined) return null;
       return { copyPaste: d.copy_paste, qrImage: d.qr_image ?? "", amountCents: d.amount_cents, expiresAt: d.expires_at ?? "" };
+    },
+
+    async cardCharge(r) {
+      const parsed = cardChargeResponse.safeParse(await call({ action: "card_charge", session_id: r.sessionId, checkout_id: r.checkoutId, token: r.token, months: r.months }));
+      if (!parsed.success) throw new AddonError("bad_response", 200);
+      return parsed.data;
     },
 
     async domainSearch(domains) {

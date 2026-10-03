@@ -42,6 +42,7 @@ beforeAll(async () => {
     updateServiceDomain: async (r) => { if (syncFails > 0) { syncFails--; throw Object.assign(new Error("x"), { code: "unreachable" }); } synced.push(r); },
     ...unusedDomainSales,
     pixCharge: async () => null,
+    cardCharge: async () => { throw new Error("unused"); },
   } as AddonClient;
   ctx = { ...t.ctx, addon, resolver };
   app = buildApp(ctx);

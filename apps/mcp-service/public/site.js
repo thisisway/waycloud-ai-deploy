@@ -1,4 +1,4 @@
-import { Api, brl, checkAddress, checkForm, ensureSession, getPix, maskCep, maskDoc, maskPhone, postJson, sendZip, signup } from "./flow.js";
+import { Api, brl, chargeCard, checkAddress, checkCard, checkForm, ensureSession, getConfig, getPix, installmentOptions, maskCardNumber, maskCep, maskDoc, maskExpiry, maskPhone, postJson, sendZip, signup, tokenizeCard } from "./flow.js";
 import { startRibbons } from "./ribbons.js";
 
 const $ = (id) => document.getElementById(id);
@@ -32,6 +32,7 @@ const STEP_NAMES = ["Enviar", "Prévia", "Contratar", "No ar", "Domínio"];
 const STAGE_OF = { na_fila: 0, enviando: 1, validando: 2, publicado: 3 };
 let cycle = "mensal";
 let run = 0; // bumped to stop a polling loop that is no longer wanted
+let iuguAccountId = null; // public id only; set when the service is configured for embedded card payment
 
 const SVG = "http://www.w3.org/2000/svg";
 function icon(name) {
@@ -224,6 +225,10 @@ async function showWaiting(onlyWithPix = false) {
   $("checkout-link").href = state.checkout_url;
   const pix = await getPix(api, state.sessao_id);
   if (!pix && onlyWithPix) return false;
+  // Card reuses the Pix amount (same invoice): without a Pix to confirm it against, the embedded card tab
+  // stays hidden and "Abrir a fatura" (the real WHMCS invoice page) still covers card payment either way.
+  const showCard = pix !== null && (iuguAccountId ??= (await getConfig(api)).iuguAccountId) !== null;
+  $("pay-tabs").hidden = !showCard;
   $("pix").hidden = !pix;
   if (pix) {
     $("wait-title").textContent = "Pague com Pix";
@@ -231,10 +236,35 @@ async function showWaiting(onlyWithPix = false) {
     paintPix("pix", pix);
     $("checkout-link").textContent = "Prefere pagar com cartão ou boleto? Abrir a fatura";
   }
+  if (showCard) {
+    $("card-amount").textContent = brl(pix.valor_centavos);
+    $("c-parcelas").replaceChildren(...installmentOptions(pix.valor_centavos, 12).map((o) => {
+      const opt = document.createElement("option");
+      opt.value = String(o.months);
+      opt.textContent = o.label;
+      return opt;
+    }));
+    showPayTab("pix");
+  }
   view(3, "s-wait");
   void waitPayment();
   return pix !== null;
 }
+
+/** Switches the Pix/Cartão tab (both already painted; this only toggles which one shows). */
+function showPayTab(which) {
+  for (const b of document.querySelectorAll("#pay-tabs .pay-btn")) {
+    const on = b.dataset.pay === which;
+    b.classList.toggle("on", on);
+    b.setAttribute("aria-pressed", String(on));
+  }
+  $("pix").hidden = which !== "pix";
+  $("card-form").hidden = which !== "card";
+}
+$("pay-tabs").addEventListener("click", (e) => {
+  const btn = e.target.closest("[data-pay]");
+  if (btn) showPayTab(btn.dataset.pay);
+});
 
 /** Fills the Pix box whose element ids start with `prefix` (amount, QR image, copy-and-paste code). */
 function paintPix(prefix, pix) {
@@ -258,6 +288,51 @@ for (const button of document.querySelectorAll("[data-pix], #pix-copy")) {
     setTimeout(() => (button.textContent = "Copiar código"), 2500);
   });
 }
+
+// ---- 3b. card payment (tokenized directly with Iugu in the browser; the card number never reaches us) -----
+const CARD_FIELD_OF = { numero: "c-numero", nome: "c-nome", validade: "c-validade", cvv: "c-cvv", _form: "card-form" };
+const clearCardFieldErrors = () => Object.values(CARD_FIELD_OF).forEach((k) => showFieldError(k, ""));
+
+async function submitCard(event) {
+  event.preventDefault();
+  clearAlert();
+  clearCardFieldErrors();
+  const values = { numero: $("c-numero").value, nome: $("c-nome").value, validade: $("c-validade").value, cvv: $("c-cvv").value };
+  const local = checkCard(values);
+  if (Object.keys(local).length) {
+    for (const [k, msg] of Object.entries(local)) showFieldError(CARD_FIELD_OF[k], msg);
+    return;
+  }
+  const button = $("card-submit");
+  button.disabled = true;
+  button.textContent = "Processando...";
+  const months = Number($("c-parcelas").value) || 1;
+  const tok = await tokenizeCard(iuguAccountId, values);
+  if (!tok.ok) {
+    button.disabled = false;
+    button.textContent = "Finalizar pedido";
+    showFieldError("card-form", tok.message);
+    return;
+  }
+  const r = await chargeCard(api, state.sessao_id, tok.token, months);
+  if (r.ok) {
+    // waitPayment() is already polling (started when this step was shown): it picks up the confirmed
+    // payment and moves on to publish() by itself, same as it does for a Pix payment.
+    $("pay-tabs").hidden = true;
+    $("pix").hidden = true;
+    $("card-form").hidden = true;
+    $("wait-title").textContent = "Pagamento aprovado!";
+    $("wait-msg").textContent = "Estamos publicando o seu site agora.";
+    return;
+  }
+  button.disabled = false;
+  button.textContent = "Finalizar pedido";
+  showFieldError("card-form", r.message ?? "Não foi possível processar o cartão agora. Tente de novo ou pague com Pix.");
+}
+$("card-form").addEventListener("submit", submitCard);
+$("c-numero").addEventListener("input", (e) => (e.target.value = maskCardNumber(e.target.value)));
+$("c-validade").addEventListener("input", (e) => (e.target.value = maskExpiry(e.target.value)));
+$("c-cvv").addEventListener("input", (e) => (e.target.value = e.target.value.replace(/\D/g, "").slice(0, 4)));
 
 async function waitPayment() {
   const me = ++run;

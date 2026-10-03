@@ -64,5 +64,17 @@ interface WhmcsApi
     /** @return list<string> active payment gateway module names */
     public function paymentModules(): array;
 
+    /**
+     * Status/valor/e-mail reais da fatura, pra montar a cobrança de cartão -- nunca a partir de valor vindo do cliente.
+     * @return array{status:string, total_cents:int, email:string}|null null se a fatura não existir
+     */
+    public function invoiceForCharge(int $invoiceId): ?array;
+
+    /**
+     * Cobra um token de cartão (Iugu, de uso único) pelo valor exato informado e, se aprovado, marca a fatura paga.
+     * @return array{approved:bool, error_message:?string}
+     */
+    public function chargeCard(int $invoiceId, string $email, int $totalCents, string $token, int $months): array;
+
     public function adminAlert(string $subject, string $message): void;
 }

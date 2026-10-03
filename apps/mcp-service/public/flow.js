@@ -137,3 +137,111 @@ export async function postJson(api, path, payload) {
     return { status: 0, body: {} };
   }
 }
+
+// ---- card payment (tokenized in the browser with Iugu.js's own public endpoint; the card number never
+// reaches our server, only the one-time token does) ------------------------------------------------------
+
+/** The public Iugu account id this service was configured with, or null (then the card tab stays hidden). */
+export async function getConfig(api) {
+  try {
+    const res = await api.fetch(`${api.base}/web/config`, { headers: { accept: "application/json" } });
+    const body = await res.json().catch(() => ({}));
+    return { iuguAccountId: typeof body.iugu_account_id === "string" ? body.iugu_account_id : null };
+  } catch {
+    return { iuguAccountId: null };
+  }
+}
+
+/** "0000000000000000" -> "0000 0000 0000 0000" while typing. */
+export function maskCardNumber(raw) {
+  return withSeparators(digits(raw).slice(0, 16), { 4: " ", 8: " ", 12: " " });
+}
+
+/** "MMAA" -> "MM/AA" while typing. */
+export function maskExpiry(raw) {
+  return withSeparators(digits(raw).slice(0, 4), { 2: "/" });
+}
+
+/** Standard Luhn checksum (public algorithm, not Iugu-specific): catches typos before we ever tokenize. */
+export function luhnOk(number) {
+  const d = digits(number);
+  if (d.length < 12) return false;
+  let sum = 0;
+  let double = false;
+  for (let i = d.length - 1; i >= 0; i--) {
+    let n = Number(d[i]);
+    if (double) {
+      n *= 2;
+      if (n > 9) n -= 9;
+    }
+    sum += n;
+    double = !double;
+  }
+  return sum % 10 === 0;
+}
+
+/** Quick checks for instant feedback, before ever tokenizing the card. Returns { field: message }. */
+export function checkCard(v) {
+  const e = {};
+  if (!luhnOk(v.numero)) e.numero = "Número de cartão inválido.";
+  if (!v.nome.trim()) e.nome = "Informe o nome impresso no cartão.";
+  const m = /^(\d{2})\/(\d{2})$/.exec(v.validade.trim());
+  if (!m || Number(m[1]) < 1 || Number(m[1]) > 12) {
+    e.validade = "Informe a validade (MM/AA).";
+  } else {
+    const now = new Date();
+    const expiry = new Date(2000 + Number(m[2]), Number(m[1]), 1); // 1st of the month *after* expiry
+    if (expiry <= now) e.validade = "Esse cartão está vencido.";
+  }
+  if (!/^\d{3,4}$/.test(v.cvv.trim())) e.cvv = "Informe o código de segurança.";
+  return e;
+}
+
+/**
+ * Installment options for `amountCents`, up to `maxInstallments`, stopping once an installment would fall
+ * below Iugu's own minimum (R$5,00) — same rule the addon enforces server-side.
+ * @return {{months:number, label:string}[]}
+ */
+export function installmentOptions(amountCents, maxInstallments) {
+  const out = [];
+  for (let n = 1; n <= maxInstallments && Math.floor(amountCents / n) >= 500; n++) {
+    out.push({ months: n, label: n === 1 ? `À vista - ${brl(amountCents)}` : `${n}x de ${brl(Math.ceil(amountCents / n))} sem juros` });
+  }
+  return out;
+}
+
+/**
+ * Tokenizes the card directly with Iugu (not through our server: the card number never reaches it).
+ * Resolves to { ok: true, token } or { ok: false, message }.
+ */
+export async function tokenizeCard(accountId, card, fetchFn = (...args) => fetch(...args)) {
+  const [month, year] = card.validade.split("/");
+  const nomes = card.nome.trim().split(/\s+/);
+  const body = {
+    account_id: accountId,
+    method: "credit_card",
+    data: {
+      number: digits(card.numero),
+      verification_value: card.cvv.trim(),
+      first_name: nomes[0] ?? "",
+      last_name: nomes.slice(1).join(" ") || nomes[0] || "",
+      month,
+      year: `20${year}`,
+    },
+  };
+  let res;
+  try {
+    res = await fetchFn("https://api.iugu.com/v1/payment_token", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(body) });
+  } catch {
+    return { ok: false, message: "Não consegui validar o cartão. Confira a sua conexão e tente de novo." };
+  }
+  const data = await res.json().catch(() => ({}));
+  if (res.ok && typeof data.id === "string") return { ok: true, token: data.id };
+  return { ok: false, message: "Não foi possível validar o cartão. Confira os dados e tente de novo." };
+}
+
+/** Charges a card already tokenized against the order's invoice. Resolves to { ok, message }. */
+export async function chargeCard(api, sessaoId, token, months) {
+  const r = await postJson(api, "/web/card", { sessao_id: sessaoId, token, months });
+  return r.status === 200 && typeof r.body.ok === "boolean" ? r.body : { ok: false, message: "Não foi possível processar o cartão agora. Tente de novo ou pague com Pix." };
+}

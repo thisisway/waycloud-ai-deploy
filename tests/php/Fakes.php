@@ -315,6 +315,27 @@ final class FakeWhmcs implements WhmcsApi
         return ['efipix', 'iugucartao'];
     }
 
+    /** @var array<int,array{status:string,total_cents:int,email:string}> invoice id => invoice data */
+    public array $invoices = [];
+    public ?array $chargeResult = ['approved' => true, 'error_message' => null];
+    /** @var list<array{0:int,1:string,2:int,3:string,4:int}> invoiceId, email, totalCents, token, months */
+    public array $chargeCalls = [];
+    public ?string $failCharge = null;
+
+    public function invoiceForCharge(int $invoiceId): ?array
+    {
+        return $this->invoices[$invoiceId] ?? null;
+    }
+
+    public function chargeCard(int $invoiceId, string $email, int $totalCents, string $token, int $months): array
+    {
+        $this->chargeCalls[] = [$invoiceId, $email, $totalCents, $token, $months];
+        if ($this->failCharge !== null) {
+            throw new \RuntimeException($this->failCharge);
+        }
+        return $this->chargeResult;
+    }
+
     public function adminAlert(string $subject, string $message): void
     {
         $this->alerts[] = $subject . ' | ' . $message;

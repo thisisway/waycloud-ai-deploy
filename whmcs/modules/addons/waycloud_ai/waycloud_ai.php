@@ -25,6 +25,8 @@ function waycloud_ai_config(): array
             'mcp_url' => ['FriendlyName' => 'URL do serviço MCP', 'Type' => 'text', 'Size' => '60', 'Default' => 'https://mcp.waycloud.com.br', 'Description' => 'Sem barra no final.'],
             'hmac_secret' => ['FriendlyName' => 'Segredo HMAC', 'Type' => 'text', 'Size' => '70', 'Description' => 'Mínimo de 32 caracteres. Deve ser igual ao ADDON_HMAC_SECRET do serviço MCP.'],
             'default_payment' => ['FriendlyName' => 'Forma de pagamento padrão', 'Type' => 'text', 'Size' => '20', 'Default' => 'efipix', 'Description' => 'Módulo do gateway (Pix). O cliente pode trocar por cartão na fatura.'],
+            'iugu_api_token' => ['FriendlyName' => 'Iugu: API Token', 'Type' => 'password', 'Size' => '50', 'Description' => 'Chave secreta da Iugu (use a de teste primeiro). Usada só no servidor para cobrar o cartão.'],
+            'card_max_installments' => ['FriendlyName' => 'Cartão: máximo de parcelas', 'Type' => 'text', 'Size' => '5', 'Default' => '12'],
             'sites_domain' => ['FriendlyName' => 'Domínio provisório dos sites', 'Type' => 'text', 'Size' => '40', 'Default' => 'sites.waypreview.com.br', 'Description' => 'Cada compra recebe um subdomínio deste domínio até o cliente apontar o dele.'],
             'checkout_ttl_hours' => ['FriendlyName' => 'Validade do link (horas)', 'Type' => 'text', 'Size' => '5', 'Default' => '48'],
             'terms_url' => ['FriendlyName' => 'URL dos Termos de Serviço', 'Type' => 'text', 'Size' => '60', 'Default' => 'https://waycloud.com.br/termos-de-servicos/'],

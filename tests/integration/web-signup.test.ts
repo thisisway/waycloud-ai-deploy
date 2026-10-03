@@ -15,6 +15,8 @@ let calls: Req[] = [];
 let answer: () => Promise<SignupResult>;
 let pixCalls: Parameters<AddonClient["pixCharge"]>[0][] = [];
 let pixAnswer: () => Promise<Awaited<ReturnType<AddonClient["pixCharge"]>>>;
+let cardCalls: Parameters<AddonClient["cardCharge"]>[0][] = [];
+let cardAnswer: () => Promise<Awaited<ReturnType<AddonClient["cardCharge"]>>>;
 const QR = "data:image/png;base64,iVBORw0KGgo=";
 
 const REDIRECT = "https://app.test/sso/abc";
@@ -38,6 +40,10 @@ beforeAll(async () => {
       pixCalls.push(r);
       return pixAnswer();
     },
+    cardCharge: async (r) => {
+      cardCalls.push(r);
+      return cardAnswer();
+    },
   };
   ctx = { ...base.ctx, addon };
   app = buildApp(ctx);
@@ -49,8 +55,10 @@ afterAll(async () => {
 beforeEach(() => {
   calls = [];
   pixCalls = [];
+  cardCalls = [];
   answer = success;
   pixAnswer = async () => ({ copyPaste: "000201PIX", qrImage: QR, amountCents: 3590, expiresAt: "2026-09-29 12:00:00" });
+  cardAnswer = async () => ({ ok: true, message: null });
 });
 
 const newSession = async () => ((await TOOLS.find((t) => t.name === "iniciar_sessao")!.handler(ctx, {} as never)).dados as { sessao_id: string }).sessao_id;
@@ -183,5 +191,61 @@ describe("POST /web/pix", () => {
     expect((await pix(body.sessao_id)).json()).toMatchObject({ ok: true, qr: null });
     expect((await pix("6f1c2d3e-0000-4000-8000-0123456789ab")).statusCode).toBe(401);
     expect((await app.inject({ method: "POST", url: "/web/pix", payload: { sessao_id: "x" } })).statusCode).toBe(400);
+  });
+});
+
+describe("GET /web/config", () => {
+  it("hands over only the public Iugu account id, never a secret", async () => {
+    const r = await app.inject({ method: "GET", url: "/web/config" });
+    expect(r.statusCode).toBe(200);
+    expect(Object.keys(r.json())).toEqual(["iugu_account_id"]);
+  });
+});
+
+describe("POST /web/card", () => {
+  const card = (sessao_id: string, over: object = {}) => app.inject({ method: "POST", url: "/web/card", payload: { sessao_id, token: "tok_abc123", months: 2, ...over } });
+
+  it("charges the session's own checkout, relaying token and installments as-is", async () => {
+    const body = await valid();
+    await post(body);
+    const r = await card(body.sessao_id);
+    expect([r.statusCode, r.json()]).toEqual([200, { ok: true, message: null }]);
+    expect(r.headers["cache-control"]).toBe("no-store");
+    expect(cardCalls).toEqual([{ sessionId: (await findSession(ctx.db, body.sessao_id))!.id, checkoutId: 77, token: "tok_abc123", months: 2 }]);
+  });
+
+  it("passes through a decline message instead of throwing", async () => {
+    const body = await valid();
+    await post(body);
+    cardAnswer = async () => ({ ok: false, message: "Cartão recusado. Confira os dados, tente outro cartão ou pague com Pix." });
+    expect((await card(body.sessao_id)).json()).toEqual({ ok: false, message: "Cartão recusado. Confira os dados, tente outro cartão ou pague com Pix." });
+  });
+
+  it("without a checkout yet, or when the addon fails, answers a friendly ok:false instead of crashing", async () => {
+    const body = await valid();
+    expect((await card(body.sessao_id)).json()).toMatchObject({ ok: false }); // signed nothing up yet
+    await post(body);
+    cardAnswer = async () => {
+      throw new AddonError("unreachable", 0);
+    };
+    expect((await card(body.sessao_id)).json()).toMatchObject({ ok: false });
+  });
+
+  it("rejects unknown sessions, bad input and out-of-range installments before calling the addon", async () => {
+    const body = await valid();
+    await post(body);
+    expect((await card("6f1c2d3e-0000-4000-8000-0123456789ab")).statusCode).toBe(401);
+    expect((await app.inject({ method: "POST", url: "/web/card", payload: { sessao_id: body.sessao_id, token: "", months: 1 } })).statusCode).toBe(400);
+    expect((await app.inject({ method: "POST", url: "/web/card", payload: { sessao_id: body.sessao_id, token: "tok", months: 0 } })).statusCode).toBe(400);
+    expect((await app.inject({ method: "POST", url: "/web/card", payload: { sessao_id: body.sessao_id, token: "tok", months: 25 } })).statusCode).toBe(400);
+    expect(cardCalls).toHaveLength(0);
+  });
+
+  it("limits attempts per session", async () => {
+    const body = await valid();
+    await post(body);
+    const codes: number[] = [];
+    for (let i = 0; i < 12; i++) codes.push((await card(body.sessao_id)).statusCode);
+    expect(codes.filter((c) => c === 429).length).toBeGreaterThan(0);
   });
 });

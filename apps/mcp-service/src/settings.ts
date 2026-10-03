@@ -15,6 +15,8 @@ export interface Settings {
   nameservers: string[];
   /** Where the agent script and its signature are read from (tests point it elsewhere). */
   agentDir?: string;
+  /** Public Iugu account id: safe for the browser, used only to tokenize the card (never the secret API key). */
+  iuguAccountId?: string;
 }
 
 export const DEFAULT_SETTINGS: Settings = {
@@ -49,12 +51,13 @@ const env = z.object({
   CLAMAV_PORT: z.coerce.number().int().positive().default(3310),
   SITE_TARGET_HOST: z.string().regex(/^[a-z0-9.-]+$/).default(DEFAULT_SETTINGS.siteTargetHost),
   SITE_NAMESERVERS: z.string().regex(/^[a-z0-9.-]+(,[a-z0-9.-]+)*$/).default(DEFAULT_SETTINGS.nameservers.join(",")),
+  IUGU_ACCOUNT_ID: z.string().min(1).optional(),
 });
 
 export function loadConfig(source: NodeJS.ProcessEnv) {
   const e = env.parse(source);
   const s3: S3Config = { endpoint: e.S3_ENDPOINT, publicEndpoint: e.S3_PUBLIC_ENDPOINT, region: e.S3_REGION, accessKeyId: e.S3_ACCESS_KEY_ID, secretAccessKey: e.S3_SECRET_ACCESS_KEY, bucket: e.S3_BUCKET };
-  const settings: Settings = { ...DEFAULT_SETTINGS, previewRoot: e.PREVIEW_ROOT, previewUrlTemplate: e.PREVIEW_URL_TEMPLATE, previewTtlHours: e.PREVIEW_TTL_HOURS, siteTargetHost: e.SITE_TARGET_HOST, nameservers: e.SITE_NAMESERVERS.split(",") };
+  const settings: Settings = { ...DEFAULT_SETTINGS, previewRoot: e.PREVIEW_ROOT, previewUrlTemplate: e.PREVIEW_URL_TEMPLATE, previewTtlHours: e.PREVIEW_TTL_HOURS, siteTargetHost: e.SITE_TARGET_HOST, nameservers: e.SITE_NAMESERVERS.split(","), iuguAccountId: e.IUGU_ACCOUNT_ID };
   if (!!e.ADDON_URL !== !!e.ADDON_HMAC_SECRET) throw new Error("ADDON_URL and ADDON_HMAC_SECRET must be set together");
   const addon = e.ADDON_URL && e.ADDON_HMAC_SECRET ? { url: e.ADDON_URL, secret: e.ADDON_HMAC_SECRET } : undefined;
   const clamav = e.CLAMAV_HOST ? { host: e.CLAMAV_HOST, port: e.CLAMAV_PORT } : undefined;
