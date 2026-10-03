@@ -7,7 +7,6 @@ final class Settings
 {
     private const DEFAULTS = [
         'default_payment' => 'efipix',
-        'card_max_installments' => '12',
         'sites_domain' => 'sites.waypreview.com.br',
         'checkout_ttl_hours' => '48',
         'terms_url' => 'https://waycloud.com.br/termos-de-servicos/',

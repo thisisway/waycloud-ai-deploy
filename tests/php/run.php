@@ -622,14 +622,32 @@ test('API action pix_charge gives the Pix only to the session that made the chec
 
 test('API action card_charge approves, bills the real invoice total and marks the checkout paid', function () use ($call, $web, $validWeb, $events) {
     $e = make();
-    $e['checkout']->registerFromWeb($web($validWeb));
-    $e['whmcs']->invoices[1500] = ['status' => 'Unpaid', 'total_cents' => 3590, 'email' => 'maria@example.com'];
+    $e['checkout']->registerFromWeb($web($validWeb, 173, 'annually')); // installments are only meaningful on the annual cycle
+    $e['whmcs']->invoices[1500] = ['status' => 'Unpaid', 'total_cents' => 38770, 'email' => 'maria@example.com'];
     [$st, $r] = $call($e, ['action' => 'card_charge', 'checkout_id' => 1, 'session_id' => SESSION, 'token' => 'tok_abc', 'months' => 2]);
     eq([200, true, null], [$st, $r['ok'], $r['message']]);
-    eq([[1500, 'maria@example.com', 3590, 'tok_abc', 2]], $e['whmcs']->chargeCalls);
+    eq([[1500, 'maria@example.com', 38770, 'tok_abc', 2]], $e['whmcs']->chargeCalls);
     eq('paid', $e['store']->checkouts[1]['status']);
     eq(['order.created', 'order.paid'], $events($e));
     yes($e['store']->hasEvent('card_charge.approved', '1'), 'logged for support');
+});
+
+test('API action card_charge: installments are only offered on the annual cycle (monthly is always 1x)', function () use ($call, $web, $validWeb) {
+    $e = make();
+    $e['checkout']->registerFromWeb($web($validWeb)); // default cycle: monthly
+    $e['whmcs']->invoices[1500] = ['status' => 'Unpaid', 'total_cents' => 3590, 'email' => 'maria@example.com'];
+    [, $r] = $call($e, ['action' => 'card_charge', 'checkout_id' => 1, 'session_id' => SESSION, 'token' => 'tok_abc', 'months' => 3]); // asks for 3x anyway
+    eq(true, $r['ok']);
+    eq([[1500, 'maria@example.com', 3590, 'tok_abc', 1]], $e['whmcs']->chargeCalls, 'clamped to 1x regardless of what was requested');
+});
+
+test('API action card_charge: annual is capped at 3x even if more is requested', function () use ($call, $web, $validWeb) {
+    $e = make();
+    $e['checkout']->registerFromWeb($web($validWeb, 173, 'annually'));
+    $e['whmcs']->invoices[1500] = ['status' => 'Unpaid', 'total_cents' => 38770, 'email' => 'maria@example.com'];
+    [, $r] = $call($e, ['action' => 'card_charge', 'checkout_id' => 1, 'session_id' => SESSION, 'token' => 'tok_abc', 'months' => 10]);
+    eq(true, $r['ok']);
+    eq([[1500, 'maria@example.com', 38770, 'tok_abc', 3]], $e['whmcs']->chargeCalls, 'clamped to the 3x ceiling');
 });
 
 test('API action card_charge refuses another session, an unknown checkout and an empty token', function () use ($call, $web, $validWeb) {
@@ -677,9 +695,9 @@ test('API action card_charge: a concurrent attempt on the same checkout is refus
 
 test('API action card_charge: too many installments for the amount is refused before calling the gateway', function () use ($call, $web, $validWeb) {
     $e = make();
-    $e['checkout']->registerFromWeb($web($validWeb));
-    $e['whmcs']->invoices[1500] = ['status' => 'Unpaid', 'total_cents' => 1000, 'email' => 'maria@example.com']; // R$10, min R$5/parcela
-    [, $r] = $call($e, ['action' => 'card_charge', 'checkout_id' => 1, 'session_id' => SESSION, 'token' => 'tok_abc', 'months' => 12]);
+    $e['checkout']->registerFromWeb($web($validWeb, 173, 'annually'));
+    $e['whmcs']->invoices[1500] = ['status' => 'Unpaid', 'total_cents' => 1000, 'email' => 'maria@example.com']; // R$10 / 3x = R$3,33, abaixo do minimo de R$5/parcela
+    [, $r] = $call($e, ['action' => 'card_charge', 'checkout_id' => 1, 'session_id' => SESSION, 'token' => 'tok_abc', 'months' => 3]);
     eq(false, $r['ok']);
     eq(0, count($e['whmcs']->chargeCalls));
     eq('ordered', $e['store']->checkouts[1]['status']);

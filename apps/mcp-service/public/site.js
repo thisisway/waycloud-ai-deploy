@@ -201,7 +201,7 @@ async function submitSignup(event) {
   setTimeout(() => { if (button.disabled) button.textContent = "Ainda enviando, pode levar até 1 minuto..."; }, 4000);
   const r = await signup(api, { sessao_id: state.sessao_id, plano_pid: chosen.pid, ciclo: cycle, ...values, nome: values.nome.trim(), email: values.email.trim(), website: f.website.value });
   if (r.ok) {
-    save({ stage: "waiting", checkout_url: r.redirect });
+    save({ stage: "waiting", checkout_url: r.redirect, cycle });
     // The Pix is shown right here; without one (card only, a hiccup) the visitor goes to the payment page and comes back by themselves.
     if (await showWaiting(true)) return;
     location.assign(r.redirect);
@@ -238,7 +238,9 @@ async function showWaiting(onlyWithPix = false) {
   }
   if (showCard) {
     $("card-amount").textContent = brl(pix.valor_centavos);
-    $("c-parcelas").replaceChildren(...installmentOptions(pix.valor_centavos, 12).map((o) => {
+    // Parcelamento só faz sentido no ciclo anual (valores maiores); no mensal é sempre à vista.
+    const maxInstallments = cycle === "anual" ? 3 : 1;
+    $("c-parcelas").replaceChildren(...installmentOptions(pix.valor_centavos, maxInstallments).map((o) => {
       const opt = document.createElement("option");
       opt.value = String(o.months);
       opt.textContent = o.label;
@@ -829,6 +831,7 @@ $("cli-prompt").textContent = `Quero publicar este site na Way Cloud. Leia ${loc
 
 // Resume where the visitor left off (for instance after paying in the other tab).
 try {
+  if (state.cycle) cycle = state.cycle;
   if (state.stage === "plans") await showPlans();
   else if (state.stage === "waiting" && state.checkout_url) void showWaiting();
   else if (state.stage === "deploy" && state.deploy_id) (view(4, "s-deploy"), void follow());

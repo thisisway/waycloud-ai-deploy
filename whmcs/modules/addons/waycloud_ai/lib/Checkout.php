@@ -102,7 +102,8 @@ final class Checkout
         if ($token === '') {
             throw new ApiException('invalid_token');
         }
-        $max = max(1, (int) $this->settings->get('card_max_installments'));
+        // Parcelamento só no ciclo anual (valores maiores), até 3x sem juros; no mensal é sempre à vista.
+        $max = (string) $row['cycle'] === 'annually' ? 3 : 1;
         $months = max(1, min($max, (int) ($req['months'] ?? 1)));
         $invoiceId = (int) $row['invoice_id'];
         $checkoutId = (int) $row['id'];
